@@ -10,7 +10,6 @@ import {
   FiMenu,
   FiX,
   FiTruck,
-  FiGrid,
   FiEye,
   FiEdit,
 } from 'react-icons/fi';

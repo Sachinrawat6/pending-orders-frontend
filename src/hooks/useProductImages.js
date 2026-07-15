@@ -26,7 +26,9 @@ export const useProductImages = (orders) => {
 
     fetchProductStylesByCodes(missing)
       .then((styles) => {
-        const imageByCode = new Map(styles.map((style) => [style.style_number, style.images?.[0] || null]));
+        const imageByCode = new Map(
+          styles.map((style) => [style.style_number, style.images?.[0] || null])
+        );
         missing.forEach((code) => {
           pendingCodes.delete(code);
           styleImageCache.set(code, imageByCode.get(code) ?? null);

@@ -23,7 +23,7 @@ const App = () => {
     <OrdersOverviewProvider>
       <div className="min-h-screen bg-slate-50 w-full">
         <Header />
-        <main className="mx-auto max-w-7xl px-4  py-6 sm:px-6 lg:px-8">
+        <main className="mx-auto max-w-7xl px-4 pb-6 pt-20 sm:px-6 md:pt-6 lg:px-8">
           <Routes>
             <Route path="/" element={<ScanOrderPage />} />
             <Route path="/pending" element={<PendingOrdersPage />} />

@@ -56,7 +56,7 @@ export const useOrdersOverview = () => {
 };
 
 // custom hook for google sheet data fetching
-
+// eslint-disable-next-line react-refresh/only-export-components
 export const useGlobalContext = () => {
   return useContext(OrdersOverviewContext);
 };
