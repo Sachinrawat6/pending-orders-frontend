@@ -12,9 +12,15 @@ import {
   FiTruck,
   FiEye,
   FiEdit,
+  FiBarChart2,
+  FiRepeat,
 } from 'react-icons/fi';
 import { useAuth } from '../context/AuthContext';
+import { useOrdersOverview } from '../context/OrdersOverviewContext';
 import { useState, useEffect } from 'react';
+import { FaQrcode } from 'react-icons/fa';
+
+const QR_CODE_LINK = 'https://sachinrawat6.github.io/QrCode';
 
 // Grouped navigation structure
 const NAV_GROUPS = [
@@ -24,8 +30,9 @@ const NAV_GROUPS = [
     icon: FiEdit,
     links: [
       { to: '/', label: 'Scan Order', icon: FiCamera, end: true },
-      { to: '/pending-to-cutting', label: 'Move to Cutting / Cancel', icon: FiScissors },
+      { to: '/pending-to-cutting', label: 'Move to Process / Cancel', icon: FiScissors },
       { to: '/ship-order', label: 'Ship Order', icon: FiTruck },
+      { to: QR_CODE_LINK, label: 'Generate QrCode', icon: FaQrcode },
     ],
   },
   {
@@ -33,11 +40,28 @@ const NAV_GROUPS = [
     label: 'View Records',
     icon: FiEye,
     links: [
-      { to: '/pending', label: 'Pending Orders', icon: FiPackage },
-      { to: '/ready-for-cutting', label: 'Ready for Cutting', icon: FiScissors },
-      { to: '/cancel-requests', label: 'Cancel Requests', icon: FiXCircle },
-      { to: '/shipped', label: 'Shipped', icon: FiTruck },
-      { to: '/all-orders', label: 'All Orders', icon: FiList },
+      { to: '/dashboard', label: 'Dashboard', icon: FiBarChart2 },
+      { to: '/pending', label: 'Pending Orders', icon: FiPackage, countKey: 'pending' },
+      {
+        to: '/ready-for-cutting',
+        label: 'Ready for Cutting',
+        icon: FiScissors,
+        countKey: 'readyForCutting',
+      },
+      {
+        to: '/ready-for-process',
+        label: 'Ready for Process',
+        icon: FiRepeat,
+        countKey: 'readyForProcess',
+      },
+      {
+        to: '/cancel-requests',
+        label: 'Cancel Requests',
+        icon: FiXCircle,
+        countKey: 'cancelRequested',
+      },
+      { to: '/shipped', label: 'Shipped', icon: FiTruck, countKey: 'shipped' },
+      { to: '/all-orders', label: 'All Orders', icon: FiList, countKey: 'orders' },
     ],
   },
 ];
@@ -51,6 +75,16 @@ const MOBILE_LINKS = [
 
 const Sidebar = () => {
   const { employee, logout } = useAuth();
+  const { pending, readyForCutting, readyForProcess, cancelRequested, shipped, orders } =
+    useOrdersOverview();
+  const counts = {
+    pending: pending.length,
+    readyForCutting: readyForCutting.length,
+    readyForProcess: readyForProcess.length,
+    cancelRequested: cancelRequested.length,
+    shipped: shipped.length,
+    orders: orders.length,
+  };
   const location = useLocation();
   const [isMobileOpen, setIsMobileOpen] = useState(false);
   const [isDesktop, setIsDesktop] = useState(window.innerWidth >= 768);
@@ -148,6 +182,7 @@ const Sidebar = () => {
                   <NavLink
                     key={link.to}
                     to={link.to}
+                    target={link.to === QR_CODE_LINK ? '_blank' : ''}
                     end={link.end}
                     className={({ isActive }) =>
                       `flex items-center gap-3 rounded-lg px-4 py-2.5 text-sm font-medium transition-all duration-200 ${
@@ -164,8 +199,20 @@ const Sidebar = () => {
                       }`}
                     />
                     <span>{link.label}</span>
-                    {location.pathname === link.to && (
-                      <span className="ml-auto h-1.5 w-1.5 rounded-full bg-indigo-600" />
+                    {link.countKey ? (
+                      <span
+                        className={`ml-auto rounded-full px-2 py-0.5 text-xs font-semibold ${
+                          location.pathname === link.to
+                            ? 'bg-indigo-100 text-indigo-700'
+                            : 'bg-slate-100 text-slate-500'
+                        }`}
+                      >
+                        {counts[link.countKey] ?? 0}
+                      </span>
+                    ) : (
+                      location.pathname === link.to && (
+                        <span className="ml-auto h-1.5 w-1.5 rounded-full bg-indigo-600" />
+                      )
                     )}
                   </NavLink>
                 ))}

@@ -1,17 +1,21 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { FiTruck, FiRefreshCw } from 'react-icons/fi';
 import Banner from '../components/common/Banner';
 import Spinner from '../components/common/Spinner';
 import EmptyState from '../components/common/EmptyState';
+import OrderSearch from '../components/common/OrderSearch';
 import OrdersTable from '../components/orders/OrdersTable';
 import OrderFormDialog from '../components/orders/OrderFormDialog';
 import { useOrdersOverview } from '../context/OrdersOverviewContext';
 import { useClientPagination } from '../hooks/useClientPagination';
+import { filterOrdersBySearch } from '../lib/searchOrders';
 import { updatePendingOrder } from '../lib/api';
 
 const ShippedOrdersPage = () => {
   const { shipped, stockInfoByStyle, loading, error, reload } = useOrdersOverview();
-  const { pageItems, pagination, setPage } = useClientPagination(shipped, 25);
+  const [search, setSearch] = useState('');
+  const filtered = useMemo(() => filterOrdersBySearch(shipped, search), [shipped, search]);
+  const { pageItems, pagination, setPage } = useClientPagination(filtered, 25);
   const [editingOrder, setEditingOrder] = useState(null);
 
   const handleUpdate = async (payload) => {
@@ -41,6 +45,8 @@ const ShippedOrdersPage = () => {
         </div>
       </div>
 
+      <OrderSearch value={search} onChange={setSearch} />
+
       {error && (
         <Banner variant="error" onDismiss={reload}>
           {error}
@@ -54,11 +60,19 @@ const ShippedOrdersPage = () => {
         </div>
       )}
 
-      {!loading && shipped.length === 0 && (
-        <EmptyState icon={FiTruck} title="Nothing shipped yet" description="Orders you scan on the Ship Order page will appear here." />
+      {!loading && filtered.length === 0 && (
+        <EmptyState
+          icon={FiTruck}
+          title={search ? 'No matches' : 'Nothing shipped yet'}
+          description={
+            search
+              ? 'No shipped order matches that search.'
+              : 'Orders you scan on the Ship Order page will appear here.'
+          }
+        />
       )}
 
-      {!loading && shipped.length > 0 && (
+      {!loading && filtered.length > 0 && (
         <OrdersTable
           orders={pageItems}
           onEdit={setEditingOrder}

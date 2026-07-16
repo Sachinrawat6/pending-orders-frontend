@@ -3,12 +3,14 @@ import { FiCamera, FiSearch, FiTruck } from 'react-icons/fi';
 import Banner from '../components/common/Banner';
 import EmptyState from '../components/common/EmptyState';
 import CameraScannerDialog from '../components/scan/CameraScannerDialog';
+import { useAuth } from '../context/AuthContext';
 import { useOrdersOverview } from '../context/OrdersOverviewContext';
 import { updatePendingOrder } from '../lib/api';
 import { formatDate, formatValue } from '../lib/formatters';
 
 const ShipOrderPage = () => {
-  const { pending, readyForCutting, processed, loading, error, reload } = useOrdersOverview();
+  const { employee } = useAuth();
+  const { readyForCutting, readyForProcess, loading, error, reload } = useOrdersOverview();
   const [orderIdInput, setOrderIdInput] = useState('');
   const [foundOrder, setFoundOrder] = useState(null);
   const [lookupError, setLookupError] = useState(null);
@@ -19,10 +21,9 @@ const ShipOrderPage = () => {
   const [shippedItems, setShippedItems] = useState([]);
   const inputRef = useRef(null);
 
-  // Anything still active and not already cancelled can be shipped —
-  // covers orders shipped straight from Ready for Cutting as well as ones
-  // already moved through Pending to Cutting.
-  const shippableOrders = [...pending, ...readyForCutting, ...processed];
+  // Only orders that have actually reached the cutting stage — normally via
+  // stock/manual routing, or flagged Alter/Return Found — are eligible to ship.
+  const shippableOrders = [...readyForCutting, ...readyForProcess];
 
   const handleLookup = (rawOrderId) => {
     const orderId = String(rawOrderId).trim();
@@ -61,7 +62,11 @@ const ShipOrderPage = () => {
     setSubmitError(null);
 
     try {
-      await updatePendingOrder(foundOrder._id, { isShipped: true });
+      await updatePendingOrder(foundOrder._id, {
+        isShipped: true,
+        employee_id: employee.id,
+        employee_name: employee.name,
+      });
 
       setShippedItems((prev) => [
         { order: foundOrder, shippedAt: new Date().toISOString() },

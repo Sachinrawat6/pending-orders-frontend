@@ -1,9 +1,14 @@
-import { FiEdit2 } from 'react-icons/fi';
+import { FiEdit2, FiTruck } from 'react-icons/fi';
 import StatusBadge from '../common/StatusBadge';
 import Pagination from '../common/Pagination';
 import { useProductImages } from '../../hooks/useProductImages';
 import { formatDate, formatValue } from '../../lib/formatters';
-import { isForceReadyReason, getDisplayReason } from '../../lib/orderCategories';
+import {
+  isForceReadyReason,
+  isManualPendingReason,
+  isManualCuttingReason,
+  getDisplayReason,
+} from '../../lib/orderCategories';
 
 const ProductThumbnail = ({ src, alt }) =>
   src ? (
@@ -22,7 +27,9 @@ const ProductThumbnail = ({ src, alt }) =>
 const getStatus = (order, stockInfoByStyle) => {
   if (order.isCancelApproval) return { label: 'Cancel Requested', tone: 'red' };
   if (order.isShipped) return { label: 'Shipped', tone: 'sky' };
-  if (isForceReadyReason(order.reason)) return { label: 'Ready for Cutting', tone: 'indigo' };
+  if (isManualPendingReason(order.reason)) return { label: 'Pending', tone: 'amber' };
+  if (isManualCuttingReason(order.reason)) return { label: 'Ready for Cutting', tone: 'indigo' };
+  if (isForceReadyReason(order.reason)) return { label: 'Ready for Process', tone: 'violet' };
   if (order.isProcessed) return { label: 'Processed', tone: 'emerald' };
   if (stockInfoByStyle && (stockInfoByStyle.get(order.style_number)?.availableStock ?? 0) > 2) {
     return { label: 'Ready for Cutting', tone: 'indigo' };
@@ -43,7 +50,15 @@ const HEADINGS = [
   { label: '', hide: '' },
 ];
 
-const OrdersTable = ({ orders, onEdit, pagination, onPageChange, stockInfoByStyle }) => {
+const OrdersTable = ({
+  orders,
+  onEdit,
+  onShip,
+  shippingOrderId,
+  pagination,
+  onPageChange,
+  stockInfoByStyle,
+}) => {
   const { imageFor } = useProductImages(orders);
 
   return (
@@ -89,7 +104,9 @@ const OrdersTable = ({ orders, onEdit, pagination, onPageChange, stockInfoByStyl
                     </div>
                   </td>
                   <td className="hidden whitespace-nowrap px-4 py-3 text-slate-600 sm:table-cell">
-                    <div>{formatValue(order.size)} · {formatValue(order.channel)}</div>
+                    <div>
+                      {formatValue(order.size)} · {formatValue(order.channel)}
+                    </div>
                     <div className="text-xs text-slate-400">{formatDate(order.order_date)}</div>
                   </td>
                   <td className="hidden whitespace-nowrap px-4 py-3 text-slate-600 lg:table-cell">
@@ -107,14 +124,27 @@ const OrdersTable = ({ orders, onEdit, pagination, onPageChange, stockInfoByStyl
                     <StatusBadge tone={status.tone}>{status.label}</StatusBadge>
                   </td>
                   <td className="whitespace-nowrap px-4 py-3 text-right">
-                    <button
-                      type="button"
-                      onClick={() => onEdit(order)}
-                      className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium text-indigo-600 transition hover:bg-indigo-100"
-                    >
-                      <FiEdit2 className="h-3.5 w-3.5" />
-                      Edit
-                    </button>
+                    <div className="inline-flex items-center gap-1">
+                      {onShip && !order.isShipped && !order.isCancelApproval && (
+                        <button
+                          type="button"
+                          onClick={() => onShip(order)}
+                          disabled={shippingOrderId === order._id}
+                          className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium text-sky-600 transition hover:bg-sky-100 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          <FiTruck className="h-3.5 w-3.5" />
+                          {shippingOrderId === order._id ? 'Shipping…' : 'Ship'}
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => onEdit(order)}
+                        className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium text-indigo-600 transition hover:bg-indigo-100"
+                      >
+                        <FiEdit2 className="h-3.5 w-3.5" />
+                        Edit
+                      </button>
+                    </div>
                   </td>
                 </tr>
               );

@@ -1,17 +1,21 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { FiClock, FiRefreshCw } from 'react-icons/fi';
 import Banner from '../components/common/Banner';
 import Spinner from '../components/common/Spinner';
 import EmptyState from '../components/common/EmptyState';
+import OrderSearch from '../components/common/OrderSearch';
 import OrdersTable from '../components/orders/OrdersTable';
 import OrderFormDialog from '../components/orders/OrderFormDialog';
 import { useOrdersOverview } from '../context/OrdersOverviewContext';
 import { useClientPagination } from '../hooks/useClientPagination';
+import { filterOrdersBySearch } from '../lib/searchOrders';
 import { updatePendingOrder } from '../lib/api';
 
 const PendingOrdersPage = () => {
   const { pending, stockInfoByStyle, loading, error, reload } = useOrdersOverview();
-  const { pageItems, pagination, setPage } = useClientPagination(pending, 25);
+  const [search, setSearch] = useState('');
+  const filtered = useMemo(() => filterOrdersBySearch(pending, search), [pending, search]);
+  const { pageItems, pagination, setPage } = useClientPagination(filtered, 25);
   const [editingOrder, setEditingOrder] = useState(null);
 
   const handleUpdate = async (payload) => {
@@ -43,6 +47,8 @@ const PendingOrdersPage = () => {
         </div>
       </div>
 
+      <OrderSearch value={search} onChange={setSearch} />
+
       {error && (
         <Banner variant="error" onDismiss={reload}>
           {error}
@@ -56,15 +62,19 @@ const PendingOrdersPage = () => {
         </div>
       )}
 
-      {!loading && pending.length === 0 && (
+      {!loading && filtered.length === 0 && (
         <EmptyState
           icon={FiClock}
-          title="Nothing pending"
-          description="Every order is either ready for cutting, processed, or awaiting cancel approval."
+          title={search ? 'No matches' : 'Nothing pending'}
+          description={
+            search
+              ? 'No pending order matches that search.'
+              : 'Every order is either ready for cutting, processed, or awaiting cancel approval.'
+          }
         />
       )}
 
-      {!loading && pending.length > 0 && (
+      {!loading && filtered.length > 0 && (
         <OrdersTable
           orders={pageItems}
           onEdit={setEditingOrder}

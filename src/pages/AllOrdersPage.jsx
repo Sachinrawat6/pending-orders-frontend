@@ -1,18 +1,22 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { FiPackage, FiPlus, FiUpload, FiRefreshCw } from 'react-icons/fi';
 import Banner from '../components/common/Banner';
 import Spinner from '../components/common/Spinner';
 import EmptyState from '../components/common/EmptyState';
+import OrderSearch from '../components/common/OrderSearch';
 import OrdersTable from '../components/orders/OrdersTable';
 import OrderFormDialog from '../components/orders/OrderFormDialog';
 import BulkImportDialog from '../components/orders/BulkImportDialog';
 import { createPendingOrder, updatePendingOrder, bulkCreatePendingOrders } from '../lib/api';
 import { useOrdersOverview } from '../context/OrdersOverviewContext';
 import { useClientPagination } from '../hooks/useClientPagination';
+import { filterOrdersBySearch } from '../lib/searchOrders';
 
 const AllOrdersPage = () => {
   const { orders, stockInfoByStyle, loading, error, reload } = useOrdersOverview();
-  const { pageItems, pagination, setPage } = useClientPagination(orders, 25);
+  const [search, setSearch] = useState('');
+  const filtered = useMemo(() => filterOrdersBySearch(orders, search), [orders, search]);
+  const { pageItems, pagination, setPage } = useClientPagination(filtered, 25);
 
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [showBulkDialog, setShowBulkDialog] = useState(false);
@@ -41,11 +45,9 @@ const AllOrdersPage = () => {
           <p className="text-sm text-slate-500">Orders awaiting packing, oldest first.</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          {pagination && (
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-indigo-50 px-3 py-1 text-sm font-medium text-indigo-700 ring-1 ring-inset ring-indigo-100">
-              <span className="font-display font-semibold">{pagination.totalRecords}</span> total orders
-            </span>
-          )}
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-indigo-50 px-3 py-1 text-sm font-medium text-indigo-700 ring-1 ring-inset ring-indigo-100">
+            <span className="font-display font-semibold">{orders.length}</span> total orders
+          </span>
           <button
             type="button"
             onClick={reload}
@@ -73,6 +75,8 @@ const AllOrdersPage = () => {
         </div>
       </div>
 
+      <OrderSearch value={search} onChange={setSearch} />
+
       {error && (
         <Banner variant="error" onDismiss={reload}>
           {error}
@@ -86,15 +90,19 @@ const AllOrdersPage = () => {
         </div>
       )}
 
-      {!loading && orders.length === 0 && (
+      {!loading && filtered.length === 0 && (
         <EmptyState
           icon={FiPackage}
-          title="No pending orders"
-          description="Add one manually or bulk-import a file to get started."
+          title={search ? 'No matches' : 'No pending orders'}
+          description={
+            search
+              ? 'No order matches that search.'
+              : 'Add one manually or bulk-import a file to get started.'
+          }
         />
       )}
 
-      {!loading && orders.length > 0 && (
+      {!loading && filtered.length > 0 && (
         <OrdersTable
           orders={pageItems}
           onEdit={setEditingOrder}

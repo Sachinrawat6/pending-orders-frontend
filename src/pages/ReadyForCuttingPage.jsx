@@ -1,19 +1,26 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { FiScissors, FiRefreshCw, FiDownload } from 'react-icons/fi';
 import Banner from '../components/common/Banner';
 import Spinner from '../components/common/Spinner';
 import EmptyState from '../components/common/EmptyState';
+import OrderSearch from '../components/common/OrderSearch';
 import OrdersTable from '../components/orders/OrdersTable';
 import OrderFormDialog from '../components/orders/OrderFormDialog';
 import { useGlobalContext, useOrdersOverview } from '../context/OrdersOverviewContext';
 import { useClientPagination } from '../hooks/useClientPagination';
+import { filterOrdersBySearch } from '../lib/searchOrders';
 import { updatePendingOrder } from '../lib/api';
 import { downloadQRCodeSheet } from '../components/services/downloadQrCode';
 
 const ReadyForCuttingPage = () => {
   const { readyForCutting, stockInfoByStyle, loading, error, reload } = useOrdersOverview();
   const { styles } = useGlobalContext();
-  const { pageItems, pagination, setPage } = useClientPagination(readyForCutting, 25);
+  const [search, setSearch] = useState('');
+  const filtered = useMemo(
+    () => filterOrdersBySearch(readyForCutting, search),
+    [readyForCutting, search]
+  );
+  const { pageItems, pagination, setPage } = useClientPagination(filtered, 25);
   const [editingOrder, setEditingOrder] = useState(null);
 
   const handleUpdate = async (payload) => {
@@ -30,7 +37,7 @@ const ReadyForCuttingPage = () => {
             Ready for Cutting
           </h2>
           <p className="text-sm text-slate-500">
-            Orders with enough fabric in stock, plus any flagged Alter / Return Found.
+            Orders with enough fabric in stock, plus any manually moved to cutting.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -57,6 +64,8 @@ const ReadyForCuttingPage = () => {
         </div>
       </div>
 
+      <OrderSearch value={search} onChange={setSearch} />
+
       {error && (
         <Banner variant="error" onDismiss={reload}>
           {error}
@@ -70,15 +79,19 @@ const ReadyForCuttingPage = () => {
         </div>
       )}
 
-      {!loading && readyForCutting.length === 0 && (
+      {!loading && filtered.length === 0 && (
         <EmptyState
           icon={FiScissors}
-          title="Nothing ready yet"
-          description="No pending order currently has enough fabric in stock."
+          title={search ? 'No matches' : 'Nothing ready yet'}
+          description={
+            search
+              ? 'No ready-for-cutting order matches that search.'
+              : 'No pending order currently has enough fabric in stock.'
+          }
         />
       )}
 
-      {!loading && readyForCutting.length > 0 && (
+      {!loading && filtered.length > 0 && (
         <OrdersTable
           orders={pageItems}
           onEdit={setEditingOrder}

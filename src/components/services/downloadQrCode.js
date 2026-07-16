@@ -31,7 +31,6 @@ export const downloadQRCodeSheet = async (data, googleSheetData) => {
 
   const csvRows = [headers.join(',')];
   data.forEach((order) => {
-    // const pattern = patternData.find((o) => o.style_number == order.style_number) || {};
     const pattern =
       googleSheetData.find((o) => Number(o.style_number) === order.style_number) || {};
     const row = [

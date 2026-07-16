@@ -1,4 +1,12 @@
-const ConfirmDialog = ({ title, description, confirmLabel, onConfirm, onCancel, loading, tone = 'danger' }) => (
+const ConfirmDialog = ({
+  title,
+  description,
+  confirmLabel,
+  onConfirm,
+  onCancel,
+  loading,
+  tone = 'danger',
+}) => (
   <div className="fixed inset-0 z-40 flex items-center justify-center px-4">
     <button
       type="button"

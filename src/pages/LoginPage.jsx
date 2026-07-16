@@ -23,7 +23,11 @@ const LoginPage = () => {
         setError(`No employee found for ID "${employeeId}".`);
         return;
       }
-      login({ id: user.id, name: user.user_name, locations: user.locations || [] });
+      login({
+        id: user.id,
+        name: user.user_name?.split(' / ')[0],
+        locations: user.locations || [],
+      });
     } catch (err) {
       setError(err.message);
     } finally {
@@ -39,12 +43,17 @@ const LoginPage = () => {
             <FiPackage className="h-6 w-6" />
           </div>
           <div className="text-center">
-            <h1 className="font-display text-lg font-semibold tracking-tight text-slate-900">Pending Orders</h1>
+            <h1 className="font-display text-lg font-semibold tracking-tight text-slate-900">
+              Pending Orders
+            </h1>
             <p className="text-sm text-slate-500">Sign in with your Employee ID to continue</p>
           </div>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+        <form
+          onSubmit={handleSubmit}
+          className="space-y-4 rounded-xl border border-slate-200 bg-white p-6 shadow-sm"
+        >
           {error && (
             <Banner variant="error" onDismiss={() => setError(null)}>
               {error}

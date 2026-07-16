@@ -2,8 +2,10 @@ import { Routes, Route } from 'react-router-dom';
 import Header from './components/Header';
 import LoginPage from './pages/LoginPage';
 import ScanOrderPage from './pages/ScanOrderPage';
+import DashboardPage from './pages/DashboardPage';
 import PendingOrdersPage from './pages/PendingOrdersPage';
 import ReadyForCuttingPage from './pages/ReadyForCuttingPage';
+import ReadyForProcessPage from './pages/ReadyForProcessPage';
 import PendingToCuttingPage from './pages/PendingToCuttingPage';
 import CancelRequestsPage from './pages/CancelRequestsPage';
 import ShipOrderPage from './pages/ShipOrderPage';
@@ -26,8 +28,10 @@ const App = () => {
         <main className="mx-auto max-w-7xl px-4 pb-6 pt-20 sm:px-6 md:pt-6 lg:px-8">
           <Routes>
             <Route path="/" element={<ScanOrderPage />} />
+            <Route path="/dashboard" element={<DashboardPage />} />
             <Route path="/pending" element={<PendingOrdersPage />} />
             <Route path="/ready-for-cutting" element={<ReadyForCuttingPage />} />
+            <Route path="/ready-for-process" element={<ReadyForProcessPage />} />
             <Route path="/pending-to-cutting" element={<PendingToCuttingPage />} />
             <Route path="/cancel-requests" element={<CancelRequestsPage />} />
             <Route path="/ship-order" element={<ShipOrderPage />} />

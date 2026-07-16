@@ -17,3 +17,21 @@ body {
      overflow-x-auto, so the page itself should never need to scroll sideways. */
   overflow-x: hidden;
 }
+
+/* PDF export works by printing just the marked area (browser's "Save as PDF"
+   destination), since it needs no extra dependency beyond window.print(). */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  .print-area,
+  .print-area * {
+    visibility: visible;
+  }
+  .print-area {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+  }
+}
