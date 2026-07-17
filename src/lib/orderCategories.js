@@ -16,14 +16,30 @@ const FORCE_READY_REASONS = new Set(['Alter', 'Return Found']);
 
 export const isForceReadyReason = (reason) => FORCE_READY_REASONS.has(reason);
 
-// Set by the Scan Order page when a stock-available order is routed by hand
-// instead of automatically — these override both the stock check and the
-// Alter/Return Found routing.
+// Set by the Scan Order page (and the Pending Orders "Move to Cutting"
+// action) when a stock-available order is routed by hand instead of
+// automatically — these override both the stock check and the Alter/Return
+// Found routing. Matched by substring rather than exact equality because a
+// later manual action appends to the reason instead of replacing it (see
+// mergeManualCuttingReason below), so the history stays visible while
+// routing still keys off whichever action happened last.
 export const MANUAL_PENDING_REASON = 'Manual Move To Pending';
 export const MANUAL_CUTTING_REASON = 'Manual Move To Cutting';
 
-export const isManualPendingReason = (reason) => reason === MANUAL_PENDING_REASON;
-export const isManualCuttingReason = (reason) => reason === MANUAL_CUTTING_REASON;
+export const isManualPendingReason = (reason) => String(reason || '').includes(MANUAL_PENDING_REASON);
+export const isManualCuttingReason = (reason) => String(reason || '').includes(MANUAL_CUTTING_REASON);
+
+// Used by the Pending Orders "Move to Cutting" action: keeps the prior
+// reason (e.g. "Manual Move To Pending") visible instead of clobbering it,
+// so the order's history reads as "was manually pending, now manually
+// moved to cutting" rather than losing the earlier note.
+export const mergeManualCuttingReason = (currentReason) => {
+  const existing = String(currentReason || '').trim();
+  if (!existing || existing === 'NA' || isManualCuttingReason(existing)) {
+    return MANUAL_CUTTING_REASON;
+  }
+  return `${existing}, ${MANUAL_CUTTING_REASON}`;
+};
 
 // Maps style_number -> { availableStock, location, fabricName, fabricNumber }
 // for whichever stock record has the highest availableStock for that style,
@@ -73,10 +89,12 @@ export const getDisplayReason = (order, stockInfoByStyle) => {
 // already-built stock info map. Priority:
 // 1. Cancel-approval always wins (shows in Cancel Requests).
 // 2. Shipped always wins next (shows in Shipped) — it's a terminal state.
-// 3. A manual "Move To Pending" (set from the Scan Order page) forces
+// 3. A manual "Move To Cutting" forces Ready for Cutting regardless of
+//    actual stock — checked before "Move To Pending" so that clicking
+//    "Move to Cutting" on a pending order (which merges rather than
+//    replaces the reason) always wins over the earlier pending note.
+// 4. A manual "Move To Pending" (set from the Scan Order page) forces
 //    Pending regardless of actual stock.
-// 4. A manual "Move To Cutting" forces Ready for Cutting regardless of
-//    actual stock.
 // 5. A force-ready reason (Alter / Return Found) goes only to Ready for
 //    Process, never Ready for Cutting.
 // 6. Otherwise, an already-processed order (resolved through the normal
@@ -95,10 +113,10 @@ export const categorizeOrdersWithStockInfo = (orders, stockInfoByStyle) => {
       cancelRequested.push(order);
     } else if (order.isShipped) {
       shipped.push(order);
-    } else if (isManualPendingReason(order.reason)) {
-      pending.push(order);
     } else if (isManualCuttingReason(order.reason)) {
       readyForCutting.push(order);
+    } else if (isManualPendingReason(order.reason)) {
+      pending.push(order);
     } else if (isForceReadyReason(order.reason)) {
       readyForProcess.push(order);
     } else if (order.isProcessed) {

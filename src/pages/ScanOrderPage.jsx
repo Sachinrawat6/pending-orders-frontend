@@ -79,7 +79,6 @@ const ScanOrderPage = () => {
 
       setSuccess(`Order ${payload.order_id} scanned.`);
       setOrderIdInput('');
-      inputRef.current?.focus();
     } catch (err) {
       setError(
         isDuplicateOrderError(err.message)
@@ -88,6 +87,9 @@ const ScanOrderPage = () => {
       );
     } finally {
       setSubmitting(false);
+      // The input is disabled (and un-focusable) while submitting=true; wait
+      // for that to actually clear from the DOM before refocusing it.
+      setTimeout(() => inputRef.current?.focus(), 0);
     }
   };
 
