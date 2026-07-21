@@ -14,6 +14,7 @@ import {
   FiEdit,
   FiBarChart2,
   FiRepeat,
+  FiSend,
 } from 'react-icons/fi';
 import { useAuth } from '../context/AuthContext';
 import { useOrdersOverview } from '../context/OrdersOverviewContext';
@@ -31,6 +32,7 @@ const NAV_GROUPS = [
     links: [
       { to: '/', label: 'Scan Order', icon: FiCamera, end: true },
       { to: '/pending-to-cutting', label: 'Move to Process / Cancel', icon: FiScissors },
+      { to: '/store-scan', label: 'Store Scan', icon: FiSend },
       { to: '/ship-order', label: 'Ship Order', icon: FiTruck },
       { to: QR_CODE_LINK, label: 'Generate QrCode', icon: FaQrcode },
     ],

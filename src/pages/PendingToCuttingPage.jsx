@@ -6,7 +6,7 @@ import CameraScannerDialog from '../components/scan/CameraScannerDialog';
 import { useOrdersOverview } from '../context/OrdersOverviewContext';
 import { updatePendingOrder } from '../lib/api';
 import { REASONS, isCancelReason } from '../lib/orderCategories';
-import { formatDate, formatValue } from '../lib/formatters';
+import { formatDate, formatStock, formatValue } from '../lib/formatters';
 
 const PendingToCuttingPage = () => {
   const { pending, readyForCutting, stockInfoByStyle, loading, error, reload } =
@@ -180,7 +180,7 @@ const PendingToCuttingPage = () => {
             <div>
               <p className="text-xs uppercase tracking-wide text-slate-400">Stock Qty</p>
               <p className="font-medium text-slate-900">
-                {stockInfoByStyle.get(foundOrder.style_number)?.availableStock ?? '—'}
+                {formatStock(stockInfoByStyle.get(foundOrder.style_number)?.availableStock)}
               </p>
             </div>
             <div>

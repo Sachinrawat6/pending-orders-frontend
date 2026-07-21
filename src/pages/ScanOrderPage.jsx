@@ -15,7 +15,7 @@ import {
   saveStockAvailableQueue,
 } from '../lib/scanQueue';
 import { MANUAL_PENDING_REASON, MANUAL_CUTTING_REASON } from '../lib/orderCategories';
-import { formatValue } from '../lib/formatters';
+import { formatStock, formatValue } from '../lib/formatters';
 
 const LOW_STOCK_THRESHOLD = 2;
 
@@ -274,7 +274,7 @@ const ScanOrderPage = () => {
                       {formatValue(item.order.size)} · {formatValue(item.order.channel)}
                     </p>
                     <p className="text-xs text-slate-400">
-                      Stock: {item.stockInfo?.availableStock ?? 0}
+                      Stock: {formatStock(item.stockInfo?.availableStock ?? 0)}
                     </p>
                   </div>
                   <button
@@ -334,7 +334,7 @@ const ScanOrderPage = () => {
                         {item.stockInfo?.location || '—'}
                       </p>
                       <p className="text-xs text-slate-400">
-                        Stock: {item.stockInfo?.availableStock ?? '—'}
+                        Stock: {formatStock(item.stockInfo?.availableStock)}
                       </p>
                     </div>
                     <button
@@ -402,7 +402,7 @@ const ScanOrderPage = () => {
                   {item.stockInfo?.location || '—'}
                 </td>
                 <td className="border border-slate-300 px-2 py-1">
-                  {item.stockInfo?.availableStock ?? '—'}
+                  {formatStock(item.stockInfo?.availableStock)}
                 </td>
               </tr>
             ))}

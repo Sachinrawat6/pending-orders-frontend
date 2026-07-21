@@ -7,6 +7,7 @@ import PendingOrdersPage from './pages/PendingOrdersPage';
 import ReadyForCuttingPage from './pages/ReadyForCuttingPage';
 import ReadyForProcessPage from './pages/ReadyForProcessPage';
 import PendingToCuttingPage from './pages/PendingToCuttingPage';
+import StoreScanPage from './pages/StoreScanPage';
 import CancelRequestsPage from './pages/CancelRequestsPage';
 import ShipOrderPage from './pages/ShipOrderPage';
 import ShippedOrdersPage from './pages/ShippedOrdersPage';
@@ -33,6 +34,7 @@ const App = () => {
             <Route path="/ready-for-cutting" element={<ReadyForCuttingPage />} />
             <Route path="/ready-for-process" element={<ReadyForProcessPage />} />
             <Route path="/pending-to-cutting" element={<PendingToCuttingPage />} />
+            <Route path="/store-scan" element={<StoreScanPage />} />
             <Route path="/cancel-requests" element={<CancelRequestsPage />} />
             <Route path="/ship-order" element={<ShipOrderPage />} />
             <Route path="/shipped" element={<ShippedOrdersPage />} />

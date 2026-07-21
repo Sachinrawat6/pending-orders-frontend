@@ -8,6 +8,7 @@ import OrdersTable from '../components/orders/OrdersTable';
 import OrderFormDialog from '../components/orders/OrderFormDialog';
 import { useGlobalContext, useOrdersOverview } from '../context/OrdersOverviewContext';
 import { useClientPagination } from '../hooks/useClientPagination';
+import { useSortableOrders } from '../hooks/useSortableOrders';
 import { filterOrdersBySearch } from '../lib/searchOrders';
 import { updatePendingOrder } from '../lib/api';
 import { downloadQRCodeSheet } from '../components/services/downloadQrCode';
@@ -20,7 +21,8 @@ const ReadyForCuttingPage = () => {
     () => filterOrdersBySearch(readyForCutting, search),
     [readyForCutting, search]
   );
-  const { pageItems, pagination, setPage } = useClientPagination(filtered, 25);
+  const { sorted, sortRules, toggleSort } = useSortableOrders(filtered);
+  const { pageItems, pagination, setPage } = useClientPagination(sorted, 25);
   const [editingOrder, setEditingOrder] = useState(null);
 
   const handleUpdate = async (payload) => {
@@ -98,6 +100,8 @@ const ReadyForCuttingPage = () => {
           pagination={pagination}
           onPageChange={setPage}
           stockInfoByStyle={stockInfoByStyle}
+          sortRules={sortRules}
+          onSortToggle={toggleSort}
         />
       )}
 

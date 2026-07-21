@@ -10,11 +10,15 @@ const CANCEL_REASONS = new Set(['Cancel Request']);
 
 export const isCancelReason = (reason) => CANCEL_REASONS.has(reason);
 
-// These reasons mean the order is flagged Alter / Return Found — it only
-// ever shows on the Ready for Process page, never Ready for Cutting.
-const FORCE_READY_REASONS = new Set(['Alter', 'Return Found']);
+// These reasons mean the order is flagged Alter / Return Found / Scanned by
+// Store — it only ever shows on the Ready for Process page, never Ready for
+// Cutting. "Scanned by Store" is set by the Ready for Cutting store-scan
+// page (see StoreScanPage) when a store scans a cutting-ready order onward.
+const FORCE_READY_REASONS = new Set(['Alter', 'Return Found', 'Scanned by Store']);
 
 export const isForceReadyReason = (reason) => FORCE_READY_REASONS.has(reason);
+
+export const SCANNED_BY_STORE_REASON = 'Scanned by Store';
 
 // Set by the Scan Order page (and the Pending Orders "Move to Cutting"
 // action) when a stock-available order is routed by hand instead of
@@ -25,9 +29,11 @@ export const isForceReadyReason = (reason) => FORCE_READY_REASONS.has(reason);
 // routing still keys off whichever action happened last.
 export const MANUAL_PENDING_REASON = 'Manual Move To Pending';
 export const MANUAL_CUTTING_REASON = 'Manual Move To Cutting';
+export const MANUAL_PROCESS_REASON = 'Manual Move To Process';
 
 export const isManualPendingReason = (reason) => String(reason || '').includes(MANUAL_PENDING_REASON);
 export const isManualCuttingReason = (reason) => String(reason || '').includes(MANUAL_CUTTING_REASON);
+export const isManualProcessReason = (reason) => String(reason || '').includes(MANUAL_PROCESS_REASON);
 
 // Used by the Pending Orders "Move to Cutting" action: keeps the prior
 // reason (e.g. "Manual Move To Pending") visible instead of clobbering it,
@@ -39,6 +45,16 @@ export const mergeManualCuttingReason = (currentReason) => {
     return MANUAL_CUTTING_REASON;
   }
   return `${existing}, ${MANUAL_CUTTING_REASON}`;
+};
+
+// Used by the Pending Orders "Move to Process" action — same append-not-
+// replace behavior as mergeManualCuttingReason above.
+export const mergeManualProcessReason = (currentReason) => {
+  const existing = String(currentReason || '').trim();
+  if (!existing || existing === 'NA' || isManualProcessReason(existing)) {
+    return MANUAL_PROCESS_REASON;
+  }
+  return `${existing}, ${MANUAL_PROCESS_REASON}`;
 };
 
 // Maps style_number -> { availableStock, location, fabricName, fabricNumber }
@@ -78,6 +94,7 @@ export const getDisplayReason = (order, stockInfoByStyle) => {
     !isForceReadyReason(order.reason) &&
     !isManualPendingReason(order.reason) &&
     !isManualCuttingReason(order.reason) &&
+    !isManualProcessReason(order.reason) &&
     isReadyForCutting(order, stockInfoByStyle)
   ) {
     return 'In stock available';
@@ -93,13 +110,16 @@ export const getDisplayReason = (order, stockInfoByStyle) => {
 //    actual stock — checked before "Move To Pending" so that clicking
 //    "Move to Cutting" on a pending order (which merges rather than
 //    replaces the reason) always wins over the earlier pending note.
-// 4. A manual "Move To Pending" (set from the Scan Order page) forces
+// 4. A manual "Move To Process" (Pending Orders page) forces Ready for
+//    Process regardless of stock — same append-not-replace override as
+//    Move To Cutting above, just routed to the other stage.
+// 5. A manual "Move To Pending" (set from the Scan Order page) forces
 //    Pending regardless of actual stock.
-// 5. A force-ready reason (Alter / Return Found) goes only to Ready for
+// 6. A force-ready reason (Alter / Return Found) goes only to Ready for
 //    Process, never Ready for Cutting.
-// 6. Otherwise, an already-processed order (resolved through the normal
+// 7. Otherwise, an already-processed order (resolved through the normal
 //    flow) drops out of the active pipeline entirely.
-// 7. Everything else is split Pending vs. Ready for Cutting by stock qty.
+// 8. Everything else is split Pending vs. Ready for Cutting by stock qty.
 export const categorizeOrdersWithStockInfo = (orders, stockInfoByStyle) => {
   const pending = [];
   const readyForCutting = [];
@@ -115,6 +135,8 @@ export const categorizeOrdersWithStockInfo = (orders, stockInfoByStyle) => {
       shipped.push(order);
     } else if (isManualCuttingReason(order.reason)) {
       readyForCutting.push(order);
+    } else if (isManualProcessReason(order.reason)) {
+      readyForProcess.push(order);
     } else if (isManualPendingReason(order.reason)) {
       pending.push(order);
     } else if (isForceReadyReason(order.reason)) {

@@ -1,39 +1,28 @@
 import { useMemo, useState } from 'react';
-import { FiPackage, FiPlus, FiUpload, FiRefreshCw } from 'react-icons/fi';
+import { FiPackage, FiRefreshCw } from 'react-icons/fi';
 import Banner from '../components/common/Banner';
 import Spinner from '../components/common/Spinner';
 import EmptyState from '../components/common/EmptyState';
 import OrderSearch from '../components/common/OrderSearch';
 import OrdersTable from '../components/orders/OrdersTable';
 import OrderFormDialog from '../components/orders/OrderFormDialog';
-import BulkImportDialog from '../components/orders/BulkImportDialog';
-import { createPendingOrder, updatePendingOrder, bulkCreatePendingOrders } from '../lib/api';
+import { updatePendingOrder } from '../lib/api';
 import { useOrdersOverview } from '../context/OrdersOverviewContext';
 import { useClientPagination } from '../hooks/useClientPagination';
+import { useSortableOrders } from '../hooks/useSortableOrders';
 import { filterOrdersBySearch } from '../lib/searchOrders';
 
 const AllOrdersPage = () => {
   const { orders, stockInfoByStyle, loading, error, reload } = useOrdersOverview();
   const [search, setSearch] = useState('');
   const filtered = useMemo(() => filterOrdersBySearch(orders, search), [orders, search]);
-  const { pageItems, pagination, setPage } = useClientPagination(filtered, 25);
+  const { sorted, sortRules, toggleSort } = useSortableOrders(filtered);
+  const { pageItems, pagination, setPage } = useClientPagination(sorted, 25);
 
-  const [showAddDialog, setShowAddDialog] = useState(false);
-  const [showBulkDialog, setShowBulkDialog] = useState(false);
   const [editingOrder, setEditingOrder] = useState(null);
-
-  const handleCreate = async (payload) => {
-    await createPendingOrder(payload);
-    reload();
-  };
 
   const handleUpdate = async (payload) => {
     await updatePendingOrder(editingOrder._id, payload);
-    reload();
-  };
-
-  const handleBulkImport = async (records) => {
-    await bulkCreatePendingOrders(records);
     reload();
   };
 
@@ -56,22 +45,6 @@ const AllOrdersPage = () => {
             <FiRefreshCw className="h-3.5 w-3.5" />
             Refresh
           </button>
-          <button
-            type="button"
-            onClick={() => setShowBulkDialog(true)}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 px-3.5 py-2 text-sm font-medium text-slate-600 transition hover:bg-slate-50"
-          >
-            <FiUpload className="h-4 w-4" />
-            Bulk Import
-          </button>
-          <button
-            type="button"
-            onClick={() => setShowAddDialog(true)}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3.5 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-indigo-700"
-          >
-            <FiPlus className="h-4 w-4" />
-            Add Order
-          </button>
         </div>
       </div>
 
@@ -93,11 +66,9 @@ const AllOrdersPage = () => {
       {!loading && filtered.length === 0 && (
         <EmptyState
           icon={FiPackage}
-          title={search ? 'No matches' : 'No pending orders'}
+          title={search ? 'No matches' : 'No orders yet'}
           description={
-            search
-              ? 'No order matches that search.'
-              : 'Add one manually or bulk-import a file to get started.'
+            search ? 'No order matches that search.' : 'Orders will appear here once they are scanned.'
           }
         />
       )}
@@ -109,14 +80,14 @@ const AllOrdersPage = () => {
           pagination={pagination}
           onPageChange={setPage}
           stockInfoByStyle={stockInfoByStyle}
+          sortRules={sortRules}
+          onSortToggle={toggleSort}
         />
       )}
 
-      {showAddDialog && <OrderFormDialog onSubmit={handleCreate} onClose={() => setShowAddDialog(false)} />}
       {editingOrder && (
         <OrderFormDialog order={editingOrder} onSubmit={handleUpdate} onClose={() => setEditingOrder(null)} />
       )}
-      {showBulkDialog && <BulkImportDialog onImport={handleBulkImport} onClose={() => setShowBulkDialog(false)} />}
     </div>
   );
 };

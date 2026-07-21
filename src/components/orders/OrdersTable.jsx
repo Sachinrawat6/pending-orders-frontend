@@ -1,13 +1,22 @@
 import { useState } from 'react';
-import { FiEdit2, FiTruck, FiScissors, FiX } from 'react-icons/fi';
+import {
+  FiEdit2,
+  FiTruck,
+  FiScissors,
+  FiRepeat,
+  FiX,
+  FiChevronUp,
+  FiChevronDown,
+} from 'react-icons/fi';
 import StatusBadge from '../common/StatusBadge';
 import Pagination from '../common/Pagination';
 import { useProductImages } from '../../hooks/useProductImages';
-import { formatDate, formatValue } from '../../lib/formatters';
+import { formatDateTime, formatStock, formatValue, getDaysSince } from '../../lib/formatters';
 import {
   isForceReadyReason,
   isManualPendingReason,
   isManualCuttingReason,
+  isManualProcessReason,
   getDisplayReason,
 } from '../../lib/orderCategories';
 
@@ -52,6 +61,7 @@ const getStatus = (order, stockInfoByStyle) => {
   if (order.isCancelApproval) return { label: 'Cancel Requested', tone: 'red' };
   if (order.isShipped) return { label: 'Shipped', tone: 'sky' };
   if (isManualCuttingReason(order.reason)) return { label: 'Ready for Cutting', tone: 'indigo' };
+  if (isManualProcessReason(order.reason)) return { label: 'Ready for Process', tone: 'violet' };
   if (isManualPendingReason(order.reason)) return { label: 'Pending', tone: 'amber' };
   if (isForceReadyReason(order.reason)) return { label: 'Ready for Process', tone: 'violet' };
   if (order.isProcessed) return { label: 'Processed', tone: 'emerald' };
@@ -67,8 +77,10 @@ const getStatus = (order, stockInfoByStyle) => {
 const REASON_CHIP_TONES = {
   'Manual Move To Pending': 'bg-amber-50 text-amber-700',
   'Manual Move To Cutting': 'bg-indigo-50 text-indigo-700',
+  'Manual Move To Process': 'bg-violet-50 text-violet-700',
   Alter: 'bg-violet-50 text-violet-700',
   'Return Found': 'bg-violet-50 text-violet-700',
+  'Scanned by Store': 'bg-violet-50 text-violet-700',
   'Cancel Request': 'bg-red-50 text-red-700',
   'In stock available': 'bg-emerald-50 text-emerald-700',
 };
@@ -98,18 +110,53 @@ const ReasonChips = ({ reason }) => {
   );
 };
 
-// Columns beyond "Order" / "Status" / actions are secondary — hidden on
-// narrower screens so the table doesn't force horizontal scrolling just to
-// see the status of an order.
+// Columns beyond "Style Number" / "Status" / actions are secondary — hidden
+// on narrower screens so the table doesn't force horizontal scrolling just
+// to see the status of an order. `key` marks the columns that can be
+// sorted by clicking their header (see useSortableOrders). `optional`
+// columns only render when the page opts in (see `showPendingDays` prop).
 const HEADINGS = [
-  { label: 'Order', hide: '' },
-  { label: 'Details', hide: 'hidden sm:table-cell' },
+  { key: 'style_number', label: 'Style Number', hide: '' },
+  { key: 'channel', label: 'Channel', hide: 'hidden sm:table-cell' },
+  { key: 'order_date', label: 'Date', hide: 'hidden md:table-cell' },
+  {
+    key: 'pending_days',
+    label: 'Pending Days',
+    hide: 'hidden md:table-cell',
+    optional: 'showPendingDays',
+  },
   { label: 'Employee', hide: 'hidden lg:table-cell' },
   { label: 'Reason', hide: 'hidden lg:table-cell' },
   { label: 'Stock', hide: 'hidden md:table-cell' },
   { label: 'Status', hide: '' },
   { label: '', hide: '' },
 ];
+
+// Shows which direction a column is sorted in, and — when more than one
+// column is active at once — a small priority badge so it's clear which
+// column decides ties first.
+const SortIndicator = ({ direction, priority }) => (
+  <span className="inline-flex items-center">
+    <span className="relative -space-y-1.5 text-slate-300">
+      <FiChevronUp className={`block h-3 w-3 ${direction === 'asc' ? 'text-indigo-600' : ''}`} />
+      <FiChevronDown
+        className={`-mt-1 block h-3 w-3 ${direction === 'desc' ? 'text-indigo-600' : ''}`}
+      />
+    </span>
+    {priority && (
+      <span className="ml-0.5 text-[10px] font-semibold text-indigo-500">{priority}</span>
+    )}
+  </span>
+);
+
+const getSortMeta = (sortRules, key) => {
+  const idx = (sortRules || []).findIndex((rule) => rule.key === key);
+  if (idx === -1) return { direction: null, priority: null };
+  return {
+    direction: sortRules[idx].direction,
+    priority: sortRules.length > 1 ? idx + 1 : null,
+  };
+};
 
 const OrdersTable = ({
   orders,
@@ -118,6 +165,8 @@ const OrdersTable = ({
   shippingOrderId,
   onMoveToCutting,
   movingToCuttingId,
+  onMoveToProcess,
+  movingToProcessId,
   pagination,
   onPageChange,
   stockInfoByStyle,
@@ -125,10 +174,15 @@ const OrdersTable = ({
   selectedIds,
   onToggleSelect,
   onToggleSelectAll,
+  sortRules,
+  onSortToggle,
+  showPendingDays,
 }) => {
   const { imageFor } = useProductImages(orders);
-  const allSelected = selectable && orders.length > 0 && orders.every((order) => selectedIds?.has(order._id));
+  const allSelected =
+    selectable && orders.length > 0 && orders.every((order) => selectedIds?.has(order._id));
   const [previewImage, setPreviewImage] = useState(null);
+  const headings = HEADINGS.filter((heading) => !heading.optional || showPendingDays);
 
   return (
     <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
@@ -147,17 +201,31 @@ const OrdersTable = ({
                   />
                 </th>
               )}
-              {HEADINGS.map((heading) => (
-                <th
-                  key={heading.label || 'actions'}
-                  className={`whitespace-nowrap px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 ${heading.hide}`}
-                >
-                  {heading.label}
-                </th>
-              ))}
+              {headings.map((heading) => {
+                const { direction, priority } = getSortMeta(sortRules, heading.key);
+                return (
+                  <th
+                    key={heading.label || 'actions'}
+                    className={`whitespace-nowrap px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 ${heading.hide}`}
+                  >
+                    {heading.key && onSortToggle ? (
+                      <button
+                        type="button"
+                        onClick={() => onSortToggle(heading.key)}
+                        className="inline-flex items-center gap-1 transition hover:text-slate-700"
+                      >
+                        {heading.label}
+                        <SortIndicator direction={direction} priority={priority} />
+                      </button>
+                    ) : (
+                      heading.label
+                    )}
+                  </th>
+                );
+              })}
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-100">
+          <tbody>
             {orders.map((order) => {
               const status = getStatus(order, stockInfoByStyle);
               const stockInfo = stockInfoByStyle?.get(order.style_number);
@@ -165,7 +233,7 @@ const OrdersTable = ({
               return (
                 <tr
                   key={order._id}
-                  className="transition even:bg-slate-50/60 hover:bg-indigo-50/40"
+                  className="transition even:bg-slate-50/60 hover:bg-indigo-50/40 border-b border-slate-200"
                 >
                   {selectable && (
                     <td className="whitespace-nowrap px-4 py-3">
@@ -199,11 +267,19 @@ const OrdersTable = ({
                     </div>
                   </td>
                   <td className="hidden whitespace-nowrap px-4 py-3 text-slate-600 sm:table-cell">
-                    <div>
-                      {formatValue(order.size)} · {formatValue(order.channel)}
-                    </div>
-                    <div className="text-xs text-slate-400">{formatDate(order.order_date)}</div>
+                    {formatValue(order.size)} · {formatValue(order.channel)}
                   </td>
+                  <td className="hidden whitespace-nowrap px-4 py-3 text-slate-600 md:table-cell">
+                    {formatDateTime(order.order_date)}
+                  </td>
+                  {showPendingDays && (
+                    <td className="hidden whitespace-nowrap px-4 py-3 tabular-nums text-slate-600 md:table-cell">
+                      {(() => {
+                        const days = getDaysSince(order.order_date);
+                        return days === null ? '—' : `${days} ${days === 1 ? 'day' : 'days'}`;
+                      })()}
+                    </td>
+                  )}
                   <td className="hidden whitespace-nowrap px-4 py-3 text-slate-600 lg:table-cell">
                     <div>{formatValue(order.employee_name)}</div>
                     <div className="text-xs text-slate-400">#{formatValue(order.employee_id)}</div>
@@ -212,23 +288,34 @@ const OrdersTable = ({
                     <ReasonChips reason={displayReason} />
                   </td>
                   <td className="hidden whitespace-nowrap px-4 py-3 text-slate-600 md:table-cell">
-                    <div className="tabular-nums">{stockInfo ? stockInfo.availableStock : '—'}</div>
+                    <div className="tabular-nums">{formatStock(stockInfo?.availableStock)}</div>
                     <div className="text-xs text-slate-400">{stockInfo?.location || '—'}</div>
                   </td>
                   <td className="whitespace-nowrap px-4 py-3">
                     <StatusBadge tone={status.tone}>{status.label}</StatusBadge>
                   </td>
-                  <td className="whitespace-nowrap px-4 py-3 text-right">
-                    <div className="inline-flex items-center gap-1">
+                  <td className="px-4 py-3 text-right">
+                    <div className="flex flex-wrap items-center justify-end gap-1">
                       {onMoveToCutting && !order.isShipped && !order.isCancelApproval && (
                         <button
                           type="button"
                           onClick={() => onMoveToCutting(order)}
                           disabled={movingToCuttingId === order._id}
-                          className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium text-indigo-600 transition hover:bg-indigo-100 disabled:cursor-not-allowed disabled:opacity-50"
+                          className="inline-flex items-center gap-1.5 rounded-md bg-indigo-600 px-2.5 py-1 text-xs font-medium text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
                         >
                           <FiScissors className="h-3.5 w-3.5" />
                           {movingToCuttingId === order._id ? 'Moving…' : 'Move to Cutting'}
+                        </button>
+                      )}
+                      {onMoveToProcess && !order.isShipped && !order.isCancelApproval && (
+                        <button
+                          type="button"
+                          onClick={() => onMoveToProcess(order)}
+                          disabled={movingToProcessId === order._id}
+                          className="inline-flex items-center gap-1.5 rounded-md bg-violet-600 px-2.5 py-1 text-xs font-medium text-white transition hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          <FiRepeat className="h-3.5 w-3.5" />
+                          {movingToProcessId === order._id ? 'Moving…' : 'Move to Process'}
                         </button>
                       )}
                       {onShip && !order.isShipped && !order.isCancelApproval && (
@@ -236,7 +323,7 @@ const OrdersTable = ({
                           type="button"
                           onClick={() => onShip(order)}
                           disabled={shippingOrderId === order._id}
-                          className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium text-sky-600 transition hover:bg-sky-100 disabled:cursor-not-allowed disabled:opacity-50"
+                          className="inline-flex items-center gap-1.5 rounded-md bg-sky-600 px-2.5 py-1 text-xs font-medium text-white transition hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-50"
                         >
                           <FiTruck className="h-3.5 w-3.5" />
                           {shippingOrderId === order._id ? 'Shipping…' : 'Ship'}
@@ -245,7 +332,7 @@ const OrdersTable = ({
                       <button
                         type="button"
                         onClick={() => onEdit(order)}
-                        className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium text-indigo-600 transition hover:bg-indigo-100"
+                        className="inline-flex items-center gap-1.5 rounded-md bg-indigo-600 px-2.5 py-1 text-xs font-medium text-white transition hover:bg-indigo-700"
                       >
                         <FiEdit2 className="h-3.5 w-3.5" />
                         Edit
