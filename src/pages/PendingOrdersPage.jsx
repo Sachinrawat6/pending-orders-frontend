@@ -8,7 +8,6 @@ import OrderSearch from '../components/common/OrderSearch';
 import DateRangeFilter from '../components/common/DateRangeFilter';
 import ChannelFilter from '../components/common/ChannelFilter';
 import OrdersTable from '../components/orders/OrdersTable';
-import OrderFormDialog from '../components/orders/OrderFormDialog';
 import { useOrdersOverview } from '../context/OrdersOverviewContext';
 import { useClientPagination } from '../hooks/useClientPagination';
 import { useSortableOrders } from '../hooks/useSortableOrders';
@@ -64,6 +63,13 @@ const getConfirmDialogProps = (confirmAction, selectedCount) => {
         confirmLabel: `Cancel Approve ${selectedCount}`,
         tone: 'danger',
       };
+    case 'cancel':
+      return {
+        title: 'Cancel this order?',
+        description: `Order #${order.order_id} (style ${order.style_number}) will be flagged "Cancel Request" and moved to Cancel Requests for review.`,
+        confirmLabel: 'Cancel Order',
+        tone: 'danger',
+      };
     default:
       return {};
   }
@@ -82,18 +88,12 @@ const PendingOrdersPage = () => {
   );
   const { sorted, sortRules, toggleSort } = useSortableOrders(filtered, DEFAULT_SORT);
   const { pageItems, pagination, setPage } = useClientPagination(sorted, 25);
-  const [editingOrder, setEditingOrder] = useState(null);
   const [moveError, setMoveError] = useState(null);
   const [selectedIds, setSelectedIds] = useState(new Set());
-  // { type: 'cutting' | 'process' | 'bulk-cutting' | 'bulk-process' | 'bulk-cancel', order? } —
+  // { type: 'cutting' | 'process' | 'cancel' | 'bulk-cutting' | 'bulk-process' | 'bulk-cancel', order? } —
   // drives the custom ConfirmDialog below instead of a native window.confirm() alert.
   const [confirmAction, setConfirmAction] = useState(null);
   const [confirmLoading, setConfirmLoading] = useState(false);
-
-  const handleUpdate = async (payload) => {
-    await updatePendingOrder(editingOrder._id, payload);
-    reload();
-  };
 
   const handleExportPdf = () => {
     window.print();
@@ -128,6 +128,8 @@ const PendingOrdersPage = () => {
         await moveOrderToCutting(confirmAction.order);
       } else if (confirmAction.type === 'process') {
         await moveOrderToProcess(confirmAction.order);
+      } else if (confirmAction.type === 'cancel') {
+        await moveOrderToCancel(confirmAction.order);
       } else if (confirmAction.type === 'bulk-cutting') {
         await Promise.all(selectedOrders().map(moveOrderToCutting));
         setSelectedIds(new Set());
@@ -304,7 +306,7 @@ const PendingOrdersPage = () => {
       {!loading && filtered.length > 0 && (
         <OrdersTable
           orders={pageItems}
-          onEdit={setEditingOrder}
+          onCancelOrder={(order) => setConfirmAction({ type: 'cancel', order })}
           onMoveToCutting={(order) => setConfirmAction({ type: 'cutting', order })}
           onMoveToProcess={(order) => setConfirmAction({ type: 'process', order })}
           pagination={pagination}
@@ -317,14 +319,6 @@ const PendingOrdersPage = () => {
           sortRules={sortRules}
           onSortToggle={toggleSort}
           showPendingDays
-        />
-      )}
-
-      {editingOrder && (
-        <OrderFormDialog
-          order={editingOrder}
-          onSubmit={handleUpdate}
-          onClose={() => setEditingOrder(null)}
         />
       )}
 

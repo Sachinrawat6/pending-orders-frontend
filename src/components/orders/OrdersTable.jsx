@@ -4,6 +4,7 @@ import {
   FiTruck,
   FiScissors,
   FiRepeat,
+  FiXCircle,
   FiX,
   FiChevronUp,
   FiChevronDown,
@@ -13,10 +14,8 @@ import Pagination from '../common/Pagination';
 import { useProductImages } from '../../hooks/useProductImages';
 import { formatDateTime, formatStock, formatValue, getDaysSince } from '../../lib/formatters';
 import {
-  isForceReadyReason,
-  isManualPendingReason,
-  isManualCuttingReason,
-  isManualProcessReason,
+  resolveOrderStage,
+  AUTO_CANCEL_REASON,
   getDisplayReason,
 } from '../../lib/orderCategories';
 
@@ -57,19 +56,16 @@ const ImageLightbox = ({ src, alt, onClose }) => (
   </div>
 );
 
-const getStatus = (order, stockInfoByStyle) => {
-  if (order.isCancelApproval) return { label: 'Cancel Requested', tone: 'red' };
-  if (order.isShipped) return { label: 'Shipped', tone: 'sky' };
-  if (isManualCuttingReason(order.reason)) return { label: 'Ready for Cutting', tone: 'indigo' };
-  if (isManualProcessReason(order.reason)) return { label: 'Ready for Process', tone: 'violet' };
-  if (isManualPendingReason(order.reason)) return { label: 'Pending', tone: 'amber' };
-  if (isForceReadyReason(order.reason)) return { label: 'Ready for Process', tone: 'violet' };
-  if (order.isProcessed) return { label: 'Processed', tone: 'emerald' };
-  if (stockInfoByStyle && (stockInfoByStyle.get(order.style_number)?.availableStock ?? 0) > 2) {
-    return { label: 'Ready for Cutting', tone: 'indigo' };
-  }
-  return { label: 'Pending', tone: 'amber' };
+const STAGE_LABELS = {
+  cancelRequested: { label: 'Cancel Requested', tone: 'red' },
+  shipped: { label: 'Shipped', tone: 'sky' },
+  readyForCutting: { label: 'Ready for Cutting', tone: 'indigo' },
+  readyForProcess: { label: 'Ready for Process', tone: 'violet' },
+  processed: { label: 'Processed', tone: 'emerald' },
+  pending: { label: 'Pending', tone: 'amber' },
 };
+
+const getStatus = (order, stockInfoByStyle) => STAGE_LABELS[resolveOrderStage(order, stockInfoByStyle)];
 
 // A merged reason (e.g. "Manual Move To Pending, Manual Move To Cutting")
 // reads as a history trail — each part gets its own colored chip instead of
@@ -82,6 +78,7 @@ const REASON_CHIP_TONES = {
   'Return Found': 'bg-violet-50 text-violet-700',
   'Scanned by Store': 'bg-violet-50 text-violet-700',
   'Cancel Request': 'bg-red-50 text-red-700',
+  [AUTO_CANCEL_REASON]: 'bg-red-50 text-red-700',
   'In stock available': 'bg-emerald-50 text-emerald-700',
 };
 const DEFAULT_REASON_CHIP_TONE = 'bg-slate-100 text-slate-600';
@@ -161,6 +158,7 @@ const getSortMeta = (sortRules, key) => {
 const OrdersTable = ({
   orders,
   onEdit,
+  onCancelOrder,
   onShip,
   shippingOrderId,
   onMoveToCutting,
@@ -287,9 +285,23 @@ const OrdersTable = ({
                   <td className="hidden max-w-[200px] px-4 py-3 text-slate-600 lg:table-cell">
                     <ReasonChips reason={displayReason} />
                   </td>
-                  <td className="hidden whitespace-nowrap px-4 py-3 text-slate-600 md:table-cell">
-                    <div className="tabular-nums">{formatStock(stockInfo?.availableStock)}</div>
-                    <div className="text-xs text-slate-400">{stockInfo?.location || '—'}</div>
+                  <td className="hidden max-w-[200px] px-4 py-3 text-slate-600 md:table-cell">
+                    {stockInfo?.fabrics?.length ? (
+                      <div className="space-y-0.5">
+                        {stockInfo.fabrics.map((fabric, index) => (
+                          <div key={`${fabric.fabricNumber}-${index}`} className="text-xs">
+                            <span className="tabular-nums font-medium text-slate-700">
+                              {formatStock(fabric.availableStock)}
+                            </span>{' '}
+                            <span className="text-slate-400">
+                              {fabric.fabricName || '—'} ({fabric.fabricNumber || '—'})
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <span className="tabular-nums">—</span>
+                    )}
                   </td>
                   <td className="whitespace-nowrap px-4 py-3">
                     <StatusBadge tone={status.tone}>{status.label}</StatusBadge>
@@ -329,14 +341,27 @@ const OrdersTable = ({
                           {shippingOrderId === order._id ? 'Shipping…' : 'Ship'}
                         </button>
                       )}
-                      <button
-                        type="button"
-                        onClick={() => onEdit(order)}
-                        className="inline-flex items-center gap-1.5 rounded-md bg-indigo-600 px-2.5 py-1 text-xs font-medium text-white transition hover:bg-indigo-700"
-                      >
-                        <FiEdit2 className="h-3.5 w-3.5" />
-                        Edit
-                      </button>
+                      {onCancelOrder ? (
+                        <button
+                          type="button"
+                          onClick={() => onCancelOrder(order)}
+                          className="inline-flex items-center gap-1.5 rounded-md bg-red-600 px-2.5 py-1 text-xs font-medium text-white transition hover:bg-red-700"
+                        >
+                          <FiXCircle className="h-3.5 w-3.5" />
+                          Cancel
+                        </button>
+                      ) : (
+                        onEdit && (
+                          <button
+                            type="button"
+                            onClick={() => onEdit(order)}
+                            className="inline-flex items-center gap-1.5 rounded-md bg-indigo-600 px-2.5 py-1 text-xs font-medium text-white transition hover:bg-indigo-700"
+                          >
+                            <FiEdit2 className="h-3.5 w-3.5" />
+                            Edit
+                          </button>
+                        )
+                      )}
                     </div>
                   </td>
                 </tr>

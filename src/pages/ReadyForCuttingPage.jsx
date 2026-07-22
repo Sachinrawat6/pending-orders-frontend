@@ -3,9 +3,9 @@ import { FiScissors, FiRefreshCw, FiDownload } from 'react-icons/fi';
 import Banner from '../components/common/Banner';
 import Spinner from '../components/common/Spinner';
 import EmptyState from '../components/common/EmptyState';
+import ConfirmDialog from '../components/common/ConfirmDialog';
 import OrderSearch from '../components/common/OrderSearch';
 import OrdersTable from '../components/orders/OrdersTable';
-import OrderFormDialog from '../components/orders/OrderFormDialog';
 import { useGlobalContext, useOrdersOverview } from '../context/OrdersOverviewContext';
 import { useClientPagination } from '../hooks/useClientPagination';
 import { useSortableOrders } from '../hooks/useSortableOrders';
@@ -23,13 +23,27 @@ const ReadyForCuttingPage = () => {
   );
   const { sorted, sortRules, toggleSort } = useSortableOrders(filtered);
   const { pageItems, pagination, setPage } = useClientPagination(sorted, 25);
-  const [editingOrder, setEditingOrder] = useState(null);
+  const [cancelError, setCancelError] = useState(null);
+  const [cancelOrder, setCancelOrder] = useState(null);
+  const [confirmLoading, setConfirmLoading] = useState(false);
 
-  const handleUpdate = async (payload) => {
-    await updatePendingOrder(editingOrder._id, payload);
-    reload();
+  const handleConfirmCancel = async () => {
+    if (!cancelOrder) return;
+    setConfirmLoading(true);
+    setCancelError(null);
+    try {
+      await updatePendingOrder(cancelOrder._id, {
+        reason: 'Cancel Request',
+        isCancelApproval: true,
+      });
+      reload();
+      setCancelOrder(null);
+    } catch (err) {
+      setCancelError(err.message);
+    } finally {
+      setConfirmLoading(false);
+    }
   };
-  console.log(styles);
 
   return (
     <div className="space-y-5">
@@ -73,6 +87,11 @@ const ReadyForCuttingPage = () => {
           {error}
         </Banner>
       )}
+      {cancelError && (
+        <Banner variant="error" onDismiss={() => setCancelError(null)}>
+          {cancelError}
+        </Banner>
+      )}
 
       {loading && (
         <div className="flex items-center justify-center gap-2 py-16 text-slate-500">
@@ -96,7 +115,7 @@ const ReadyForCuttingPage = () => {
       {!loading && filtered.length > 0 && (
         <OrdersTable
           orders={pageItems}
-          onEdit={setEditingOrder}
+          onCancelOrder={setCancelOrder}
           pagination={pagination}
           onPageChange={setPage}
           stockInfoByStyle={stockInfoByStyle}
@@ -105,11 +124,15 @@ const ReadyForCuttingPage = () => {
         />
       )}
 
-      {editingOrder && (
-        <OrderFormDialog
-          order={editingOrder}
-          onSubmit={handleUpdate}
-          onClose={() => setEditingOrder(null)}
+      {cancelOrder && (
+        <ConfirmDialog
+          title="Cancel this order?"
+          description={`Order #${cancelOrder.order_id} (style ${cancelOrder.style_number}) will be flagged "Cancel Request" and moved to Cancel Requests for review.`}
+          confirmLabel="Cancel Order"
+          tone="danger"
+          loading={confirmLoading}
+          onConfirm={handleConfirmCancel}
+          onCancel={() => setCancelOrder(null)}
         />
       )}
     </div>

@@ -1,3 +1,5 @@
+import { getDaysSince } from './formatters';
+
 export const REASONS = [
   { value: 'Alter', label: 'Alter' },
   { value: 'Return Found', label: 'Return Found' },
@@ -57,53 +59,71 @@ export const mergeManualProcessReason = (currentReason) => {
   return `${existing}, ${MANUAL_PROCESS_REASON}`;
 };
 
-// Maps style_number -> { availableStock, location, fabricName, fabricNumber }
-// for whichever stock record has the highest availableStock for that style,
-// since a style can appear under more than one fabric record.
+// Minimum available stock a fabric needs to count as "in stock" — a style
+// only counts as fully stocked when every one of its linked fabrics clears
+// this, not just its best one (see buildStockInfoMap below).
+export const STOCK_THRESHOLD = 2;
+
+// Maps style_number -> {
+//   availableStock, location, fabricName, fabricNumber, // the single
+//     highest-stock fabric linked to this style, kept for backwards-
+//     compatible display where only one fabric is shown,
+//   fabrics: [{ fabricNumber, fabricName, location, availableStock }],
+//     // every fabric linked to this style (a style can be cut from more
+//     // than one fabric number),
+//   isFullyStocked, // true only when EVERY linked fabric individually
+//     // clears STOCK_THRESHOLD — a style with 3 fabrics where only one has
+//     // stock is NOT ready, since the other two are still short.
+// }
 export const buildStockInfoMap = (stockList) => {
-  const info = new Map();
+  const grouped = new Map();
   (stockList || []).forEach((stock) => {
     (stock.styleNumbers || []).forEach((style) => {
-      const current = info.get(style);
-      const availableStock = stock.availableStock || 0;
-      if (!current || availableStock > current.availableStock) {
-        info.set(style, {
-          availableStock,
-          location: stock.location || '',
-          fabricName: stock.fabricName || '',
-          fabricNumber: stock.fabricNumber ?? '',
-        });
-      }
+      if (!grouped.has(style)) grouped.set(style, []);
+      grouped.get(style).push(stock);
+    });
+  });
+
+  const info = new Map();
+  grouped.forEach((records, style) => {
+    const fabrics = records.map((r) => ({
+      fabricNumber: r.fabricNumber ?? '',
+      fabricName: r.fabricName || '',
+      location: r.location || '',
+      availableStock: r.availableStock || 0,
+    }));
+    const best = fabrics.reduce((a, b) => (b.availableStock > a.availableStock ? b : a));
+    info.set(style, {
+      availableStock: best.availableStock,
+      location: best.location,
+      fabricName: best.fabricName,
+      fabricNumber: best.fabricNumber,
+      fabrics,
+      isFullyStocked: fabrics.every((f) => f.availableStock > STOCK_THRESHOLD),
     });
   });
   return info;
 };
 
 export const isReadyForCutting = (order, stockInfoByStyle) =>
-  (stockInfoByStyle.get(order.style_number)?.availableStock ?? 0) > 2;
+  stockInfoByStyle?.get(order.style_number)?.isFullyStocked ?? false;
 
-// The reason shown to the user isn't always the raw stored value: an order
-// that reaches Ready for Cutting purely because fabric stock is available
-// (not because it was manually routed or flagged Alter / Return Found) never
-// had a real reason set, so we label it "In stock available" instead of
-// showing "NA".
-export const getDisplayReason = (order, stockInfoByStyle) => {
-  if (
-    !order.isCancelApproval &&
-    !order.isProcessed &&
-    !isForceReadyReason(order.reason) &&
-    !isManualPendingReason(order.reason) &&
-    !isManualCuttingReason(order.reason) &&
-    !isManualProcessReason(order.reason) &&
-    isReadyForCutting(order, stockInfoByStyle)
-  ) {
-    return 'In stock available';
-  }
-  return order.reason;
+// An order still genuinely stuck in Pending (no stock, no manual override)
+// auto-cancels once it's been sitting for too long — except Shopify, which
+// is excluded (its own fulfilment timeline runs longer than other channels).
+export const AUTO_CANCEL_AFTER_DAYS = 5;
+const AUTO_CANCEL_EXCLUDED_CHANNELS = new Set(['Shopify']);
+export const AUTO_CANCEL_REASON = 'Auto-Cancelled (Pending 5+ Days)';
+
+export const isStalePendingOrder = (order) => {
+  if (AUTO_CANCEL_EXCLUDED_CHANNELS.has(order.channel)) return false;
+  const days = getDaysSince(order.order_date);
+  return days !== null && days > AUTO_CANCEL_AFTER_DAYS;
 };
 
-// Splits a working set into the buckets the nav pages need, given an
-// already-built stock info map. Priority:
+// Single source of truth for "what stage is this order in" — used by both
+// categorizeOrdersWithStockInfo (bucketing) and the OrdersTable status badge,
+// so the two can never drift out of sync with each other. Priority:
 // 1. Cancel-approval always wins (shows in Cancel Requests).
 // 2. Shipped always wins next (shows in Shipped) — it's a terminal state.
 // 3. A manual "Move To Cutting" forces Ready for Cutting regardless of
@@ -113,44 +133,71 @@ export const getDisplayReason = (order, stockInfoByStyle) => {
 // 4. A manual "Move To Process" (Pending Orders page) forces Ready for
 //    Process regardless of stock — same append-not-replace override as
 //    Move To Cutting above, just routed to the other stage.
-// 5. A manual "Move To Pending" (set from the Scan Order page) forces
-//    Pending regardless of actual stock.
+// 5. A manual "Move To Pending" (set from the Scan Order page, usually
+//    alongside zeroing the fabric that made it look available) is NOT a
+//    firm route like the two above — it only holds while the style's
+//    fabric is actually still short. If stock is later replenished (a new
+//    delivery, a correction, etc.) the order graduates to Ready for Cutting
+//    on its own; if instead it just sits there too long (see
+//    isStalePendingOrder), it auto-cancels same as any other stale pending
+//    order — it isn't stuck in Pending forever just because it was manually
+//    sent there once.
 // 6. A force-ready reason (Alter / Return Found) goes only to Ready for
 //    Process, never Ready for Cutting.
 // 7. Otherwise, an already-processed order (resolved through the normal
 //    flow) drops out of the active pipeline entirely.
-// 8. Everything else is split Pending vs. Ready for Cutting by stock qty.
+// 8. Everything else is Ready for Cutting if stocked, else Cancel Requests
+//    if stale (see isStalePendingOrder), else Pending.
+export const resolveOrderStage = (order, stockInfoByStyle) => {
+  if (order.isCancelApproval) return 'cancelRequested';
+  if (order.isShipped) return 'shipped';
+  if (isManualCuttingReason(order.reason)) return 'readyForCutting';
+  if (isManualProcessReason(order.reason)) return 'readyForProcess';
+  if (isManualPendingReason(order.reason)) {
+    if (isReadyForCutting(order, stockInfoByStyle)) return 'readyForCutting';
+    return isStalePendingOrder(order) ? 'cancelRequested' : 'pending';
+  }
+  if (isForceReadyReason(order.reason)) return 'readyForProcess';
+  if (order.isProcessed) return 'processed';
+  if (isReadyForCutting(order, stockInfoByStyle)) return 'readyForCutting';
+  return isStalePendingOrder(order) ? 'cancelRequested' : 'pending';
+};
+
+// The reason shown to the user isn't always the raw stored value:
+// - An order that reaches Ready for Cutting purely because fabric stock is
+//   available (not because it was manually routed) never had a real reason
+//   set, so we label it "In stock available" instead of showing "NA".
+// - An order that auto-cancelled for sitting too long (rather than a real
+//   Cancel Request) shows that explicitly instead of its unrelated original
+//   reason (e.g. "No Fabric"), so it's clear why it landed there.
+export const getDisplayReason = (order, stockInfoByStyle) => {
+  const stage = resolveOrderStage(order, stockInfoByStyle);
+  if (stage === 'cancelRequested' && !order.isCancelApproval) {
+    return AUTO_CANCEL_REASON;
+  }
+  if (stage === 'readyForCutting' && !isManualCuttingReason(order.reason)) {
+    return 'In stock available';
+  }
+  return order.reason;
+};
+
+// Splits a working set into the buckets the nav pages need, given an
+// already-built stock info map — see resolveOrderStage above for the rules.
 export const categorizeOrdersWithStockInfo = (orders, stockInfoByStyle) => {
-  const pending = [];
-  const readyForCutting = [];
-  const readyForProcess = [];
-  const cancelRequested = [];
-  const processed = [];
-  const shipped = [];
+  const buckets = {
+    pending: [],
+    readyForCutting: [],
+    readyForProcess: [],
+    cancelRequested: [],
+    processed: [],
+    shipped: [],
+  };
 
   (orders || []).forEach((order) => {
-    if (order.isCancelApproval) {
-      cancelRequested.push(order);
-    } else if (order.isShipped) {
-      shipped.push(order);
-    } else if (isManualCuttingReason(order.reason)) {
-      readyForCutting.push(order);
-    } else if (isManualProcessReason(order.reason)) {
-      readyForProcess.push(order);
-    } else if (isManualPendingReason(order.reason)) {
-      pending.push(order);
-    } else if (isForceReadyReason(order.reason)) {
-      readyForProcess.push(order);
-    } else if (order.isProcessed) {
-      processed.push(order);
-    } else if (isReadyForCutting(order, stockInfoByStyle)) {
-      readyForCutting.push(order);
-    } else {
-      pending.push(order);
-    }
+    buckets[resolveOrderStage(order, stockInfoByStyle)].push(order);
   });
 
-  return { pending, readyForCutting, readyForProcess, cancelRequested, processed, shipped };
+  return buckets;
 };
 
 export const categorizeOrders = (orders, stockList) => {

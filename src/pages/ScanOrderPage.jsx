@@ -5,7 +5,12 @@ import EmptyState from '../components/common/EmptyState';
 import CameraScannerDialog from '../components/scan/CameraScannerDialog';
 import { useAuth } from '../context/AuthContext';
 import { useOrdersOverview } from '../context/OrdersOverviewContext';
-import { fetchNocoOrderById, createPendingOrder, bulkCreatePendingOrders } from '../lib/api';
+import {
+  fetchNocoOrderById,
+  createPendingOrder,
+  bulkCreatePendingOrders,
+  updateFabricStock,
+} from '../lib/api';
 import { buildPendingOrderPayload, isDuplicateOrderError } from '../lib/nocodb';
 import {
   loadLowStockQueue,
@@ -17,7 +22,97 @@ import {
 import { MANUAL_PENDING_REASON, MANUAL_CUTTING_REASON } from '../lib/orderCategories';
 import { formatStock, formatValue } from '../lib/formatters';
 
-const LOW_STOCK_THRESHOLD = 2;
+// Shown when "Move to Pending" is clicked — a style can be linked to more
+// than one fabric (up to 3), and any number of them may have actually been
+// used, so the user checks off every fabric whose stock should reset to 0
+// (checking none is fine too — the order still moves to Pending either way).
+const FabricPickDialog = ({ item, submitting, onConfirm, onClose }) => {
+  const fabrics = item.stockInfo?.fabrics || [];
+  const [selected, setSelected] = useState(() => new Set());
+
+  const toggle = (fabricNumber) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(fabricNumber)) {
+        next.delete(fabricNumber);
+      } else {
+        next.add(fabricNumber);
+      }
+      return next;
+    });
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 px-4 backdrop-blur-sm"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-sm rounded-xl bg-white p-5 shadow-xl"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <h3 className="text-base font-semibold text-slate-900">Which fabric(s) were used?</h3>
+        <p className="mt-1 text-sm text-slate-500">
+          Order #{formatValue(item.order.order_id)} (style {formatValue(item.order.style_number)}) will
+          move to Pending. Check every fabric whose stock should reset to 0.
+        </p>
+
+        {fabrics.length === 0 ? (
+          <p className="mt-4 text-sm text-slate-500">No fabric is linked to this style.</p>
+        ) : (
+          <div className="mt-4 space-y-2">
+            {fabrics.map((fabric) => (
+              <label
+                key={fabric.fabricNumber}
+                className="flex cursor-pointer items-center justify-between rounded-lg border border-slate-200 px-3 py-2 text-sm transition hover:border-indigo-300 hover:bg-indigo-50 has-[:disabled]:cursor-not-allowed has-[:disabled]:opacity-50"
+              >
+                <span className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={selected.has(fabric.fabricNumber)}
+                    onChange={() => toggle(fabric.fabricNumber)}
+                    disabled={submitting}
+                    className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                  />
+                  <span>
+                    <span className="font-medium text-slate-900">{fabric.fabricName || '—'}</span>
+                    <span className="text-slate-400"> ({fabric.fabricNumber || '—'})</span>
+                  </span>
+                </span>
+                <span className="tabular-nums text-slate-600">
+                  Stock: {formatStock(fabric.availableStock)}
+                </span>
+              </label>
+            ))}
+          </div>
+        )}
+
+        <div className="mt-5 flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={submitting}
+            className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-600 transition hover:bg-slate-50 disabled:opacity-50"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={() => onConfirm([...selected])}
+            disabled={submitting || (fabrics.length > 0 && selected.size === 0)}
+            className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {submitting
+              ? 'Moving…'
+              : selected.size > 0
+                ? `Move to Pending & Reset ${selected.size}`
+                : 'Move to Pending'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 const ScanOrderPage = () => {
   const { employee } = useAuth();
@@ -31,6 +126,10 @@ const ScanOrderPage = () => {
   const [rightItems, setRightItems] = useState(() => loadStockAvailableQueue());
   const [savingAll, setSavingAll] = useState(false);
   const [processingId, setProcessingId] = useState(null);
+  // Item currently being moved to Pending — while set, a dialog asks which
+  // of that style's (up to 3) linked fabrics to reset stock on.
+  const [fabricPickItem, setFabricPickItem] = useState(null);
+  const [submittingFabricPick, setSubmittingFabricPick] = useState(false);
   const inputRef = useRef(null);
 
   const isAlreadyScanned = (orderId) =>
@@ -61,9 +160,14 @@ const ScanOrderPage = () => {
       const record = records[0];
       const payload = buildPendingOrderPayload(record, employee);
       const stockInfo = stockInfoByStyle.get(payload.style_number) || null;
-      const item = { order: payload, color: record.color, stockInfo, scannedAt: new Date().toISOString() };
+      const item = {
+        order: payload,
+        color: record.color,
+        stockInfo,
+        scannedAt: new Date().toISOString(),
+      };
 
-      if ((stockInfo?.availableStock ?? 0) > LOW_STOCK_THRESHOLD) {
+      if (stockInfo?.isFullyStocked) {
         setRightItems((prev) => {
           const next = [item, ...prev];
           saveStockAvailableQueue(next);
@@ -137,17 +241,33 @@ const ScanOrderPage = () => {
     }
   };
 
-  const handleMoveToPending = async (item) => {
+  // "Move to Pending" doesn't reset stock on its own — it opens a picker
+  // (see FabricPickDialog below) so the user tells us which of this style's
+  // linked fabrics were actually used, since a style can be cut from more
+  // than one fabric and any number of them (including all) may need zeroing.
+  const handleMoveToPending = (item) => {
+    setFabricPickItem(item);
+  };
+
+  const confirmMoveToPending = async (item, fabricNumbers) => {
+    setSubmittingFabricPick(true);
     setProcessingId(item.order.order_id);
     setError(null);
     try {
       await createPendingOrder({ ...item.order, reason: MANUAL_PENDING_REASON });
+      await Promise.all(
+        fabricNumbers
+          .filter((fabricNumber) => fabricNumber !== null && fabricNumber !== '')
+          .map((fabricNumber) => updateFabricStock(fabricNumber, 0))
+      );
       removeRightItem(item.order.order_id);
       reload();
+      setFabricPickItem(null);
     } catch (err) {
       setError(err.message);
     } finally {
       setProcessingId(null);
+      setSubmittingFabricPick(false);
     }
   };
 
@@ -273,9 +393,16 @@ const ScanOrderPage = () => {
                     <p className="text-xs text-slate-400">
                       {formatValue(item.order.size)} · {formatValue(item.order.channel)}
                     </p>
-                    <p className="text-xs text-slate-400">
-                      Stock: {formatStock(item.stockInfo?.availableStock ?? 0)}
-                    </p>
+                    {item.stockInfo?.fabrics?.length ? (
+                      item.stockInfo.fabrics.map((fabric, index) => (
+                        <p key={`${fabric.fabricNumber}-${index}`} className="text-xs text-slate-400">
+                          {fabric.fabricName || '—'} ({fabric.fabricNumber || '—'}) · Stock:{' '}
+                          {formatStock(fabric.availableStock)}
+                        </p>
+                      ))
+                    ) : (
+                      <p className="text-xs text-slate-400">No fabric linked to this style.</p>
+                    )}
                   </div>
                   <button
                     type="button"
@@ -329,13 +456,17 @@ const ScanOrderPage = () => {
                           #{formatValue(item.order.order_id)}
                         </span>
                       </p>
-                      <p className="text-xs text-slate-400">
-                        {item.stockInfo?.fabricName || '—'} ({item.stockInfo?.fabricNumber ?? '—'}) ·{' '}
-                        {item.stockInfo?.location || '—'}
-                      </p>
-                      <p className="text-xs text-slate-400">
-                        Stock: {formatStock(item.stockInfo?.availableStock)}
-                      </p>
+                      {item.stockInfo?.fabrics?.length ? (
+                        item.stockInfo.fabrics.map((fabric, index) => (
+                          <p key={`${fabric.fabricNumber}-${index}`} className="text-xs text-slate-400">
+                            {fabric.fabricName || '—'} ({fabric.fabricNumber || '—'}) · {fabric.location || '—'} ·
+                            {' '}
+                            Stock: {formatStock(fabric.availableStock)}
+                          </p>
+                        ))
+                      ) : (
+                        <p className="text-xs text-slate-400">No fabric linked to this style.</p>
+                      )}
                     </div>
                     <button
                       type="button"
@@ -389,29 +520,35 @@ const ScanOrderPage = () => {
             </tr>
           </thead>
           <tbody>
-            {rightItems.map((item) => (
-              <tr key={item.order.order_id}>
-                <td className="border border-slate-300 px-2 py-1">
-                  {item.stockInfo?.fabricNumber ?? '—'}
-                </td>
-                <td className="border border-slate-300 px-2 py-1">{item.order.style_number}</td>
-                <td className="border border-slate-300 px-2 py-1">
-                  {item.stockInfo?.fabricName || '—'}
-                </td>
-                <td className="border border-slate-300 px-2 py-1">
-                  {item.stockInfo?.location || '—'}
-                </td>
-                <td className="border border-slate-300 px-2 py-1">
-                  {formatStock(item.stockInfo?.availableStock)}
-                </td>
-              </tr>
-            ))}
+            {rightItems.flatMap((item) => {
+              const fabrics = item.stockInfo?.fabrics?.length
+                ? item.stockInfo.fabrics
+                : [{ fabricNumber: '—', fabricName: '—', location: '—', availableStock: null }];
+              return fabrics.map((fabric, index) => (
+                <tr key={`${item.order.order_id}-${index}`}>
+                  <td className="border border-slate-300 px-2 py-1">{fabric.fabricNumber}</td>
+                  <td className="border border-slate-300 px-2 py-1">{item.order.style_number}</td>
+                  <td className="border border-slate-300 px-2 py-1">{fabric.fabricName || '—'}</td>
+                  <td className="border border-slate-300 px-2 py-1">{fabric.location || '—'}</td>
+                  <td className="border border-slate-300 px-2 py-1">{formatStock(fabric.availableStock)}</td>
+                </tr>
+              ));
+            })}
           </tbody>
         </table>
       </div>
 
       {showCamera && (
         <CameraScannerDialog onDetected={handleDetected} onClose={() => setShowCamera(false)} />
+      )}
+
+      {fabricPickItem && (
+        <FabricPickDialog
+          item={fabricPickItem}
+          submitting={submittingFabricPick}
+          onConfirm={(fabricNumbers) => confirmMoveToPending(fabricPickItem, fabricNumbers)}
+          onClose={() => setFabricPickItem(null)}
+        />
       )}
     </div>
   );

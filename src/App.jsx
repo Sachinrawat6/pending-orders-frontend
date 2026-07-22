@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Routes, Route } from 'react-router-dom';
 import Header from './components/Header';
 import LoginPage from './pages/LoginPage';
@@ -15,8 +16,33 @@ import AllOrdersPage from './pages/AllOrdersPage';
 import { useAuth } from './context/AuthContext';
 import { OrdersOverviewProvider } from './context/OrdersOverviewContext';
 
+const SIDEBAR_COLLAPSED_KEY = 'pending_orders_sidebar_collapsed';
+
 const App = () => {
   const { isAuthenticated } = useAuth();
+  // Lifted up (rather than kept local to Header) because the main content's
+  // left margin has to shrink/grow in lockstep with the sidebar's width —
+  // they're siblings, not parent/child, so this is the shared source of truth.
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    try {
+      return localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === 'true';
+    } catch {
+      return false;
+    }
+  });
+
+  const toggleSidebarCollapsed = () => {
+    setSidebarCollapsed((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem(SIDEBAR_COLLAPSED_KEY, String(next));
+      } catch {
+        // localStorage can throw in private-browsing/quota-exceeded cases —
+        // the toggle still works for the current session either way.
+      }
+      return next;
+    });
+  };
 
   if (!isAuthenticated) {
     return <LoginPage />;
@@ -25,8 +51,12 @@ const App = () => {
   return (
     <OrdersOverviewProvider>
       <div className="min-h-screen bg-slate-50 w-full">
-        <Header />
-        <main className="mx-auto max-w-7xl px-4 pb-6 pt-20 sm:px-6 md:pt-6 lg:px-8">
+        <Header collapsed={sidebarCollapsed} onToggleCollapsed={toggleSidebarCollapsed} />
+        <main
+          className={`px-4 pb-6 pt-20 transition-[margin] duration-300 ease-in-out sm:px-6 md:pt-6 lg:px-8 ${
+            sidebarCollapsed ? 'md:ml-20' : 'md:ml-72'
+          }`}
+        >
           <Routes>
             <Route path="/" element={<ScanOrderPage />} />
             <Route path="/dashboard" element={<DashboardPage />} />

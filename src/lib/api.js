@@ -113,4 +113,33 @@ export const fetchStockList = async () => {
   return body?.data || [];
 };
 
+const STOCK_UPDATE_API_URL = `${STOCK_API_URL}/update`;
+
+// Resets a single fabric's stock quantity (used after a scanned order with
+// that fabric is manually moved back to Pending, since it consumed the
+// fabric that made it look available).
+export const updateFabricStock = async (fabricNumber, stockQuantity) => {
+  let response;
+  try {
+    response = await fetch(STOCK_UPDATE_API_URL, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fabricNumber, stockQuantity }),
+    });
+  } catch {
+    throw new ApiRequestError('Could not reach the stock service.', 0);
+  }
+
+  const body = await response.json().catch(() => null);
+
+  if (!response.ok) {
+    throw new ApiRequestError(
+      body?.message || `Stock update failed (${response.status})`,
+      response.status
+    );
+  }
+
+  return body?.data;
+};
+
 export { ApiRequestError };
