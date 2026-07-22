@@ -82,8 +82,8 @@ const NAV_GROUPS = [
     links: [{ to: '/pending', label: 'Pending Orders', icon: FiPackage, countKey: 'pending' }],
   },
   {
-    id: 'view',
-    label: 'View Records',
+    id: 'monitoring',
+    label: 'Monitoring',
     icon: FiEye,
     bgColor: 'bg-purple-50/80 border-purple-200/50',
     headerColor: 'text-purple-700',
