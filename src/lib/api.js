@@ -142,4 +142,23 @@ export const updateFabricStock = async (fabricNumber, stockQuantity) => {
   return body?.data;
 };
 
+// OTP request/verify for the "Cancel" flow (see components/common/CancelOtpDialog).
+// Whitelist management and the OTP inbox itself live in the separate
+// otp-console app — this app only ever requests + verifies a code.
+export const requestCancelOtp = async (phone) => {
+  const body = await request('/otp/request', {
+    method: 'POST',
+    body: JSON.stringify({ phone }),
+  });
+  return body.data; // { name }
+};
+
+export const verifyCancelOtp = async (phone, otp) => {
+  const body = await request('/otp/verify', {
+    method: 'POST',
+    body: JSON.stringify({ phone, otp }),
+  });
+  return body.data; // { verified: true }
+};
+
 export { ApiRequestError };

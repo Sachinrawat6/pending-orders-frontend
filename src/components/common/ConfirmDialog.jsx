@@ -3,6 +3,8 @@ const TONE_CLASSES = {
   violet: 'bg-violet-600 hover:bg-violet-700',
   sky: 'bg-sky-600 hover:bg-sky-700',
   indigo: 'bg-indigo-600 hover:bg-indigo-700',
+  emerald: 'bg-emerald-600 hover:bg-emerald-700',
+  slate: 'bg-slate-600 hover:bg-slate-700',
 };
 
 const ConfirmDialog = ({

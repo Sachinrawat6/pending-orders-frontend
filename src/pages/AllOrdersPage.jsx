@@ -5,8 +5,6 @@ import Spinner from '../components/common/Spinner';
 import EmptyState from '../components/common/EmptyState';
 import OrderSearch from '../components/common/OrderSearch';
 import OrdersTable from '../components/orders/OrdersTable';
-import OrderFormDialog from '../components/orders/OrderFormDialog';
-import { updatePendingOrder } from '../lib/api';
 import { useOrdersOverview } from '../context/OrdersOverviewContext';
 import { useClientPagination } from '../hooks/useClientPagination';
 import { useSortableOrders } from '../hooks/useSortableOrders';
@@ -18,13 +16,6 @@ const AllOrdersPage = () => {
   const filtered = useMemo(() => filterOrdersBySearch(orders, search), [orders, search]);
   const { sorted, sortRules, toggleSort } = useSortableOrders(filtered);
   const { pageItems, pagination, setPage } = useClientPagination(sorted, 25);
-
-  const [editingOrder, setEditingOrder] = useState(null);
-
-  const handleUpdate = async (payload) => {
-    await updatePendingOrder(editingOrder._id, payload);
-    reload();
-  };
 
   return (
     <div className="space-y-5">
@@ -76,17 +67,12 @@ const AllOrdersPage = () => {
       {!loading && filtered.length > 0 && (
         <OrdersTable
           orders={pageItems}
-          onEdit={setEditingOrder}
           pagination={pagination}
           onPageChange={setPage}
           stockInfoByStyle={stockInfoByStyle}
           sortRules={sortRules}
           onSortToggle={toggleSort}
         />
-      )}
-
-      {editingOrder && (
-        <OrderFormDialog order={editingOrder} onSubmit={handleUpdate} onClose={() => setEditingOrder(null)} />
       )}
     </div>
   );

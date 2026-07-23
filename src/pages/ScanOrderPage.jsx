@@ -504,13 +504,16 @@ const ScanOrderPage = () => {
         </div>
       </div>
 
-      {/* Print-only fabric pull list for the "Stock Available" column */}
+      {/* Print-only fabric pull list for the "Stock Available" column — a
+          style can be linked to more than one fabric, so every fabric's
+          number/name/location/stock is stacked (one line each) inside the
+          same row's cells instead of splitting into one row per fabric. */}
       <div className="print-area hidden print:block">
         <h2 className="mb-4 text-lg font-semibold">Stock Available — Fabric Pull List</h2>
         <table className="w-full border-collapse text-sm">
           <thead>
             <tr>
-              {['Fabric Number', 'Style Number', 'Fabric Name', 'Location', 'Available Stock'].map(
+              {['Style Number', 'Fabric Number', 'Fabric Name', 'Location', 'Available Stock'].map(
                 (heading) => (
                   <th key={heading} className="border border-slate-300 px-2 py-1 text-left">
                     {heading}
@@ -520,19 +523,35 @@ const ScanOrderPage = () => {
             </tr>
           </thead>
           <tbody>
-            {rightItems.flatMap((item) => {
+            {rightItems.map((item) => {
               const fabrics = item.stockInfo?.fabrics?.length
                 ? item.stockInfo.fabrics
                 : [{ fabricNumber: '—', fabricName: '—', location: '—', availableStock: null }];
-              return fabrics.map((fabric, index) => (
-                <tr key={`${item.order.order_id}-${index}`}>
-                  <td className="border border-slate-300 px-2 py-1">{fabric.fabricNumber}</td>
+              return (
+                <tr key={item.order.order_id}>
                   <td className="border border-slate-300 px-2 py-1">{item.order.style_number}</td>
-                  <td className="border border-slate-300 px-2 py-1">{fabric.fabricName || '—'}</td>
-                  <td className="border border-slate-300 px-2 py-1">{fabric.location || '—'}</td>
-                  <td className="border border-slate-300 px-2 py-1">{formatStock(fabric.availableStock)}</td>
+                  <td className="border border-slate-300 px-2 py-1">
+                    {fabrics.map((fabric, index) => (
+                      <div key={index}>{fabric.fabricNumber || '—'}</div>
+                    ))}
+                  </td>
+                  <td className="border border-slate-300 px-2 py-1">
+                    {fabrics.map((fabric, index) => (
+                      <div key={index}>{fabric.fabricName || '—'}</div>
+                    ))}
+                  </td>
+                  <td className="border border-slate-300 px-2 py-1">
+                    {fabrics.map((fabric, index) => (
+                      <div key={index}>{fabric.location || '—'}</div>
+                    ))}
+                  </td>
+                  <td className="border border-slate-300 px-2 py-1">
+                    {fabrics.map((fabric, index) => (
+                      <div key={index}>{formatStock(fabric.availableStock)}</div>
+                    ))}
+                  </td>
                 </tr>
-              ));
+              );
             })}
           </tbody>
         </table>

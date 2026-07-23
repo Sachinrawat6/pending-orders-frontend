@@ -1,10 +1,10 @@
 import { useState } from 'react';
 import {
-  FiEdit2,
   FiTruck,
   FiScissors,
   FiRepeat,
   FiXCircle,
+  FiCheckCircle,
   FiX,
   FiChevronUp,
   FiChevronDown,
@@ -58,6 +58,7 @@ const ImageLightbox = ({ src, alt, onClose }) => (
 
 const STAGE_LABELS = {
   cancelRequested: { label: 'Cancel Requested', tone: 'red' },
+  cancelled: { label: 'Cancelled', tone: 'slate' },
   shipped: { label: 'Shipped', tone: 'sky' },
   readyForCutting: { label: 'Ready for Cutting', tone: 'indigo' },
   readyForProcess: { label: 'Ready for Process', tone: 'violet' },
@@ -157,7 +158,6 @@ const getSortMeta = (sortRules, key) => {
 
 const OrdersTable = ({
   orders,
-  onEdit,
   onCancelOrder,
   onShip,
   shippingOrderId,
@@ -165,6 +165,10 @@ const OrdersTable = ({
   movingToCuttingId,
   onMoveToProcess,
   movingToProcessId,
+  onMarkCancelled,
+  markingCancelledId,
+  onMarkProcessed,
+  markingProcessedId,
   pagination,
   onPageChange,
   stockInfoByStyle,
@@ -341,7 +345,7 @@ const OrdersTable = ({
                           {shippingOrderId === order._id ? 'Shipping…' : 'Ship'}
                         </button>
                       )}
-                      {onCancelOrder ? (
+                      {onCancelOrder && !order.isShipped && !order.isCancelApproval && (
                         <button
                           type="button"
                           onClick={() => onCancelOrder(order)}
@@ -350,17 +354,28 @@ const OrdersTable = ({
                           <FiXCircle className="h-3.5 w-3.5" />
                           Cancel
                         </button>
-                      ) : (
-                        onEdit && (
-                          <button
-                            type="button"
-                            onClick={() => onEdit(order)}
-                            className="inline-flex items-center gap-1.5 rounded-md bg-indigo-600 px-2.5 py-1 text-xs font-medium text-white transition hover:bg-indigo-700"
-                          >
-                            <FiEdit2 className="h-3.5 w-3.5" />
-                            Edit
-                          </button>
-                        )
+                      )}
+                      {onMarkProcessed && !order.isShipped && !order.isCancelApproval && (
+                        <button
+                          type="button"
+                          onClick={() => onMarkProcessed(order)}
+                          disabled={markingProcessedId === order._id}
+                          className="inline-flex items-center gap-1.5 rounded-md bg-emerald-600 px-2.5 py-1 text-xs font-medium text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          <FiCheckCircle className="h-3.5 w-3.5" />
+                          {markingProcessedId === order._id ? 'Marking…' : 'Mark as Processed'}
+                        </button>
+                      )}
+                      {onMarkCancelled && !order.isShipped && !order.isCancelled && (
+                        <button
+                          type="button"
+                          onClick={() => onMarkCancelled(order)}
+                          disabled={markingCancelledId === order._id}
+                          className="inline-flex items-center gap-1.5 rounded-md bg-slate-600 px-2.5 py-1 text-xs font-medium text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          <FiXCircle className="h-3.5 w-3.5" />
+                          {markingCancelledId === order._id ? 'Marking…' : 'Mark as Cancelled'}
+                        </button>
                       )}
                     </div>
                   </td>

@@ -10,8 +10,10 @@ import ReadyForProcessPage from './pages/ReadyForProcessPage';
 import PendingToCuttingPage from './pages/PendingToCuttingPage';
 import StoreScanPage from './pages/StoreScanPage';
 import CancelRequestsPage from './pages/CancelRequestsPage';
+import CancelledOrdersPage from './pages/CancelledOrdersPage';
 import ShipOrderPage from './pages/ShipOrderPage';
 import ShippedOrdersPage from './pages/ShippedOrdersPage';
+import ProcessedOrdersPage from './pages/ProcessedOrdersPage';
 import AllOrdersPage from './pages/AllOrdersPage';
 import { useAuth } from './context/AuthContext';
 import { OrdersOverviewProvider } from './context/OrdersOverviewContext';
@@ -66,8 +68,10 @@ const App = () => {
             <Route path="/pending-to-cutting" element={<PendingToCuttingPage />} />
             <Route path="/store-scan" element={<StoreScanPage />} />
             <Route path="/cancel-requests" element={<CancelRequestsPage />} />
+            <Route path="/cancelled" element={<CancelledOrdersPage />} />
             <Route path="/ship-order" element={<ShipOrderPage />} />
             <Route path="/shipped" element={<ShippedOrdersPage />} />
+            <Route path="/processed" element={<ProcessedOrdersPage />} />
             <Route path="/all-orders" element={<AllOrdersPage />} />
           </Routes>
         </main>

@@ -124,16 +124,25 @@ export const isStalePendingOrder = (order) => {
 // Single source of truth for "what stage is this order in" — used by both
 // categorizeOrdersWithStockInfo (bucketing) and the OrdersTable status badge,
 // so the two can never drift out of sync with each other. Priority:
-// 1. Cancel-approval always wins (shows in Cancel Requests).
-// 2. Shipped always wins next (shows in Shipped) — it's a terminal state.
-// 3. A manual "Move To Cutting" forces Ready for Cutting regardless of
+// 1. isCancelled always wins first (shows in Cancelled) — set by the
+//    Cancelled page's "Mark as Cancelled" action, it's a harder terminal
+//    state than the mere cancel-approval flag below.
+// 2. Cancel-approval wins next (shows in Cancel Requests).
+// 3. Shipped wins next (shows in Shipped) — the most terminal state an
+//    order can reach, checked before isProcessComplete so a Processed order
+//    that later gets shipped still moves to Shipped rather than staying put.
+// 4. isProcessComplete (Ready for Process page's "Mark as Processed" action)
+//    shows in Processed — checked here, before the reason-based routing
+//    below, so it overrides whatever reason originally routed the order to
+//    Ready for Process.
+// 5. A manual "Move To Cutting" forces Ready for Cutting regardless of
 //    actual stock — checked before "Move To Pending" so that clicking
 //    "Move to Cutting" on a pending order (which merges rather than
 //    replaces the reason) always wins over the earlier pending note.
-// 4. A manual "Move To Process" (Pending Orders page) forces Ready for
+// 6. A manual "Move To Process" (Pending Orders page) forces Ready for
 //    Process regardless of stock — same append-not-replace override as
 //    Move To Cutting above, just routed to the other stage.
-// 5. A manual "Move To Pending" (set from the Scan Order page, usually
+// 7. A manual "Move To Pending" (set from the Scan Order page, usually
 //    alongside zeroing the fabric that made it look available) is NOT a
 //    firm route like the two above — it only holds while the style's
 //    fabric is actually still short. If stock is later replenished (a new
@@ -142,15 +151,17 @@ export const isStalePendingOrder = (order) => {
 //    isStalePendingOrder), it auto-cancels same as any other stale pending
 //    order — it isn't stuck in Pending forever just because it was manually
 //    sent there once.
-// 6. A force-ready reason (Alter / Return Found) goes only to Ready for
+// 8. A force-ready reason (Alter / Return Found) goes only to Ready for
 //    Process, never Ready for Cutting.
-// 7. Otherwise, an already-processed order (resolved through the normal
+// 9. Otherwise, an already-processed order (resolved through the normal
 //    flow) drops out of the active pipeline entirely.
-// 8. Everything else is Ready for Cutting if stocked, else Cancel Requests
+// 10. Everything else is Ready for Cutting if stocked, else Cancel Requests
 //    if stale (see isStalePendingOrder), else Pending.
 export const resolveOrderStage = (order, stockInfoByStyle) => {
+  if (order.isCancelled) return 'cancelled';
   if (order.isCancelApproval) return 'cancelRequested';
   if (order.isShipped) return 'shipped';
+  if (order.isProcessComplete) return 'processed';
   if (isManualCuttingReason(order.reason)) return 'readyForCutting';
   if (isManualProcessReason(order.reason)) return 'readyForProcess';
   if (isManualPendingReason(order.reason)) {
@@ -189,6 +200,7 @@ export const categorizeOrdersWithStockInfo = (orders, stockInfoByStyle) => {
     readyForCutting: [],
     readyForProcess: [],
     cancelRequested: [],
+    cancelled: [],
     processed: [],
     shipped: [],
   };

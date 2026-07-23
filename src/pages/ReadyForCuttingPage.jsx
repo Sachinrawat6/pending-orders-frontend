@@ -3,7 +3,7 @@ import { FiScissors, FiRefreshCw, FiDownload } from 'react-icons/fi';
 import Banner from '../components/common/Banner';
 import Spinner from '../components/common/Spinner';
 import EmptyState from '../components/common/EmptyState';
-import ConfirmDialog from '../components/common/ConfirmDialog';
+import CancelOtpDialog from '../components/common/CancelOtpDialog';
 import OrderSearch from '../components/common/OrderSearch';
 import OrdersTable from '../components/orders/OrdersTable';
 import { useGlobalContext, useOrdersOverview } from '../context/OrdersOverviewContext';
@@ -23,26 +23,18 @@ const ReadyForCuttingPage = () => {
   );
   const { sorted, sortRules, toggleSort } = useSortableOrders(filtered);
   const { pageItems, pagination, setPage } = useClientPagination(sorted, 25);
-  const [cancelError, setCancelError] = useState(null);
   const [cancelOrder, setCancelOrder] = useState(null);
-  const [confirmLoading, setConfirmLoading] = useState(false);
 
-  const handleConfirmCancel = async () => {
+  // Cancel is OTP-gated (see CancelOtpDialog) — the mutation only runs after
+  // a whitelisted phone number verifies the OTP.
+  const handleCancelVerified = async () => {
     if (!cancelOrder) return;
-    setConfirmLoading(true);
-    setCancelError(null);
-    try {
-      await updatePendingOrder(cancelOrder._id, {
-        reason: 'Cancel Request',
-        isCancelApproval: true,
-      });
-      reload();
-      setCancelOrder(null);
-    } catch (err) {
-      setCancelError(err.message);
-    } finally {
-      setConfirmLoading(false);
-    }
+    await updatePendingOrder(cancelOrder._id, {
+      reason: 'Cancel Request',
+      isCancelApproval: true,
+    });
+    reload();
+    setCancelOrder(null);
   };
 
   return (
@@ -87,12 +79,6 @@ const ReadyForCuttingPage = () => {
           {error}
         </Banner>
       )}
-      {cancelError && (
-        <Banner variant="error" onDismiss={() => setCancelError(null)}>
-          {cancelError}
-        </Banner>
-      )}
-
       {loading && (
         <div className="flex items-center justify-center gap-2 py-16 text-slate-500">
           <Spinner className="h-5 w-5" />
@@ -125,14 +111,11 @@ const ReadyForCuttingPage = () => {
       )}
 
       {cancelOrder && (
-        <ConfirmDialog
+        <CancelOtpDialog
           title="Cancel this order?"
-          description={`Order #${cancelOrder.order_id} (style ${cancelOrder.style_number}) will be flagged "Cancel Request" and moved to Cancel Requests for review.`}
-          confirmLabel="Cancel Order"
-          tone="danger"
-          loading={confirmLoading}
-          onConfirm={handleConfirmCancel}
-          onCancel={() => setCancelOrder(null)}
+          description={`Order #${cancelOrder.order_id} (style ${cancelOrder.style_number}) will be flagged "Cancel Request" and moved to Cancel Requests for review. Verify your mobile number to continue.`}
+          onVerified={handleCancelVerified}
+          onClose={() => setCancelOrder(null)}
         />
       )}
     </div>

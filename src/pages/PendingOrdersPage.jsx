@@ -4,6 +4,7 @@ import Banner from '../components/common/Banner';
 import Spinner from '../components/common/Spinner';
 import EmptyState from '../components/common/EmptyState';
 import ConfirmDialog from '../components/common/ConfirmDialog';
+import CancelOtpDialog from '../components/common/CancelOtpDialog';
 import OrderSearch from '../components/common/OrderSearch';
 import DateRangeFilter from '../components/common/DateRangeFilter';
 import ChannelFilter from '../components/common/ChannelFilter';
@@ -55,20 +56,6 @@ const getConfirmDialogProps = (confirmAction, selectedCount) => {
         description: `${selectedCount} order(s) will be manually moved to Ready for Process.`,
         confirmLabel: `Move ${selectedCount} to Process`,
         tone: 'violet',
-      };
-    case 'bulk-cancel':
-      return {
-        title: 'Cancel-approve selected orders?',
-        description: `${selectedCount} order(s) will be flagged "Cancel Request" and moved to Cancel Requests for review.`,
-        confirmLabel: `Cancel Approve ${selectedCount}`,
-        tone: 'danger',
-      };
-    case 'cancel':
-      return {
-        title: 'Cancel this order?',
-        description: `Order #${order.order_id} (style ${order.style_number}) will be flagged "Cancel Request" and moved to Cancel Requests for review.`,
-        confirmLabel: 'Cancel Order',
-        tone: 'danger',
       };
     default:
       return {};
@@ -128,16 +115,11 @@ const PendingOrdersPage = () => {
         await moveOrderToCutting(confirmAction.order);
       } else if (confirmAction.type === 'process') {
         await moveOrderToProcess(confirmAction.order);
-      } else if (confirmAction.type === 'cancel') {
-        await moveOrderToCancel(confirmAction.order);
       } else if (confirmAction.type === 'bulk-cutting') {
         await Promise.all(selectedOrders().map(moveOrderToCutting));
         setSelectedIds(new Set());
       } else if (confirmAction.type === 'bulk-process') {
         await Promise.all(selectedOrders().map(moveOrderToProcess));
-        setSelectedIds(new Set());
-      } else if (confirmAction.type === 'bulk-cancel') {
-        await Promise.all(selectedOrders().map(moveOrderToCancel));
         setSelectedIds(new Set());
       }
       reload();
@@ -147,6 +129,21 @@ const PendingOrdersPage = () => {
       setConfirmLoading(false);
       setConfirmAction(null);
     }
+  };
+
+  // Cancel is OTP-gated (see CancelOtpDialog) — the mutation only runs after
+  // a whitelisted phone number verifies the OTP, so errors here surface
+  // inside that dialog rather than the page-level moveError banner.
+  const handleCancelVerified = async () => {
+    if (!confirmAction) return;
+    if (confirmAction.type === 'cancel') {
+      await moveOrderToCancel(confirmAction.order);
+    } else if (confirmAction.type === 'bulk-cancel') {
+      await Promise.all(selectedOrders().map(moveOrderToCancel));
+      setSelectedIds(new Set());
+    }
+    reload();
+    setConfirmAction(null);
   };
 
   const toggleSelect = (orderId) => {
@@ -322,23 +319,42 @@ const PendingOrdersPage = () => {
         />
       )}
 
-      {confirmAction && (
-        <ConfirmDialog
-          {...getConfirmDialogProps(confirmAction, selectedIds.size)}
-          loading={confirmLoading}
-          onConfirm={handleConfirmAction}
-          onCancel={() => setConfirmAction(null)}
-        />
-      )}
+      {confirmAction &&
+        (confirmAction.type === 'cancel' || confirmAction.type === 'bulk-cancel' ? (
+          <CancelOtpDialog
+            title={
+              confirmAction.type === 'bulk-cancel'
+                ? 'Cancel selected orders?'
+                : 'Cancel this order?'
+            }
+            description={
+              confirmAction.type === 'bulk-cancel'
+                ? `${selectedIds.size} order(s) will be flagged "Cancel Request" and moved to Cancel Requests for review. Verify your mobile number to continue.`
+                : `Order #${confirmAction.order.order_id} (style ${confirmAction.order.style_number}) will be flagged "Cancel Request" and moved to Cancel Requests for review. Verify your mobile number to continue.`
+            }
+            onVerified={handleCancelVerified}
+            onClose={() => setConfirmAction(null)}
+          />
+        ) : (
+          <ConfirmDialog
+            {...getConfirmDialogProps(confirmAction, selectedIds.size)}
+            loading={confirmLoading}
+            onConfirm={handleConfirmAction}
+            onCancel={() => setConfirmAction(null)}
+          />
+        ))}
       </div>
 
-      {/* Print-only pending orders list for PDF export */}
+      {/* Print-only pending orders list for PDF export — a style can be
+          linked to more than one fabric, so every fabric's number/name/
+          location/stock is stacked (one line each) inside the same row's
+          cells instead of only showing the single best-stocked one. */}
       <div className="print-area hidden print:block">
         <h2 className="mb-4 text-lg font-semibold">Pending Orders</h2>
         <table className="w-full border-collapse text-sm">
           <thead>
             <tr>
-              {['Style Number', 'Size', 'Channel', 'Fabric Stock', 'Fabric Name', 'Location'].map(
+              {['Style Number', 'Size', 'Channel', 'Fabric Number', 'Fabric Name', 'Location', 'Fabric Stock'].map(
                 (heading) => (
                   <th key={heading} className="border border-slate-300 px-2 py-1 text-left">
                     {heading}
@@ -350,19 +366,33 @@ const PendingOrdersPage = () => {
           <tbody>
             {sorted.map((order) => {
               const stockInfo = stockInfoByStyle?.get(order.style_number);
+              const fabrics = stockInfo?.fabrics?.length
+                ? stockInfo.fabrics
+                : [{ fabricNumber: '—', fabricName: '—', location: '—', availableStock: null }];
               return (
                 <tr key={order._id}>
                   <td className="border border-slate-300 px-2 py-1">{order.style_number}</td>
                   <td className="border border-slate-300 px-2 py-1">{order.size}</td>
                   <td className="border border-slate-300 px-2 py-1">{order.channel}</td>
                   <td className="border border-slate-300 px-2 py-1">
-                    {formatStock(stockInfo?.availableStock)}
+                    {fabrics.map((fabric, index) => (
+                      <div key={index}>{fabric.fabricNumber || '—'}</div>
+                    ))}
                   </td>
                   <td className="border border-slate-300 px-2 py-1">
-                    {stockInfo?.fabricName || '—'}
+                    {fabrics.map((fabric, index) => (
+                      <div key={index}>{fabric.fabricName || '—'}</div>
+                    ))}
                   </td>
                   <td className="border border-slate-300 px-2 py-1">
-                    {stockInfo?.location || '—'}
+                    {fabrics.map((fabric, index) => (
+                      <div key={index}>{fabric.location || '—'}</div>
+                    ))}
+                  </td>
+                  <td className="border border-slate-300 px-2 py-1">
+                    {fabrics.map((fabric, index) => (
+                      <div key={index}>{formatStock(fabric.availableStock)}</div>
+                    ))}
                   </td>
                 </tr>
               );

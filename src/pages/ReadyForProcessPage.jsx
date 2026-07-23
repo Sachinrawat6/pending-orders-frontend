@@ -1,18 +1,57 @@
 import { useMemo, useState } from 'react';
-import { FiRepeat, FiRefreshCw, FiTruck } from 'react-icons/fi';
+import { FiRepeat, FiRefreshCw, FiTruck, FiCheckCircle } from 'react-icons/fi';
 import Banner from '../components/common/Banner';
 import Spinner from '../components/common/Spinner';
 import EmptyState from '../components/common/EmptyState';
 import ConfirmDialog from '../components/common/ConfirmDialog';
+import CancelOtpDialog from '../components/common/CancelOtpDialog';
 import OrderSearch from '../components/common/OrderSearch';
 import OrdersTable from '../components/orders/OrdersTable';
-import OrderFormDialog from '../components/orders/OrderFormDialog';
 import { useAuth } from '../context/AuthContext';
 import { useOrdersOverview } from '../context/OrdersOverviewContext';
 import { useClientPagination } from '../hooks/useClientPagination';
 import { useSortableOrders } from '../hooks/useSortableOrders';
 import { filterOrdersBySearch } from '../lib/searchOrders';
 import { updatePendingOrder } from '../lib/api';
+
+// Maps a confirmAction to the props the ConfirmDialog needs — keeps the
+// ship / bulk-ship / cancel variants in one place instead of scattered
+// ternaries inline in the JSX.
+const getConfirmDialogProps = (confirmAction, selectedCount) => {
+  const order = confirmAction.order;
+  switch (confirmAction.type) {
+    case 'ship':
+      return {
+        title: 'Mark order as shipped?',
+        description: `Order #${order.order_id} (style ${order.style_number}) will be marked as shipped.`,
+        confirmLabel: 'Mark Shipped',
+        tone: 'sky',
+      };
+    case 'bulk-ship':
+      return {
+        title: 'Mark selected orders as shipped?',
+        description: `${selectedCount} order(s) will be marked as shipped.`,
+        confirmLabel: `Mark ${selectedCount} Shipped`,
+        tone: 'sky',
+      };
+    case 'process':
+      return {
+        title: 'Mark order as processed?',
+        description: `Order #${order.order_id} (style ${order.style_number}) will be moved to Processed.`,
+        confirmLabel: 'Mark Processed',
+        tone: 'emerald',
+      };
+    case 'bulk-process':
+      return {
+        title: 'Mark selected orders as processed?',
+        description: `${selectedCount} order(s) will be moved to Processed.`,
+        confirmLabel: `Mark ${selectedCount} Processed`,
+        tone: 'emerald',
+      };
+    default:
+      return {};
+  }
+};
 
 const ReadyForProcessPage = () => {
   const { employee } = useAuth();
@@ -24,18 +63,12 @@ const ReadyForProcessPage = () => {
   );
   const { sorted, sortRules, toggleSort } = useSortableOrders(filtered);
   const { pageItems, pagination, setPage } = useClientPagination(sorted, 25);
-  const [editingOrder, setEditingOrder] = useState(null);
-  const [shipError, setShipError] = useState(null);
+  const [actionError, setActionError] = useState(null);
   const [selectedIds, setSelectedIds] = useState(new Set());
-  // { type: 'ship' | 'bulk-ship', order? } — drives the custom ConfirmDialog
-  // below instead of a native window.confirm() alert.
+  // { type: 'ship' | 'bulk-ship' | 'cancel', order? } — drives the custom
+  // ConfirmDialog below instead of a native window.confirm() alert.
   const [confirmAction, setConfirmAction] = useState(null);
   const [confirmLoading, setConfirmLoading] = useState(false);
-
-  const handleUpdate = async (payload) => {
-    await updatePendingOrder(editingOrder._id, payload);
-    reload();
-  };
 
   const shipOrder = (order) =>
     updatePendingOrder(order._id, {
@@ -44,25 +77,54 @@ const ReadyForProcessPage = () => {
       employee_name: employee.name,
     });
 
+  const cancelOrder = (order) =>
+    updatePendingOrder(order._id, {
+      reason: 'Cancel Request',
+      isCancelApproval: true,
+    });
+
+  const markProcessed = (order) =>
+    updatePendingOrder(order._id, {
+      isProcessComplete: true,
+      employee_id: employee.id,
+      employee_name: employee.name,
+    });
+
+  const selectedOrders = () => readyForProcess.filter((order) => selectedIds.has(order._id));
+
   const handleConfirmAction = async () => {
     if (!confirmAction) return;
     setConfirmLoading(true);
-    setShipError(null);
+    setActionError(null);
     try {
       if (confirmAction.type === 'ship') {
         await shipOrder(confirmAction.order);
       } else if (confirmAction.type === 'bulk-ship') {
-        const ordersToShip = readyForProcess.filter((order) => selectedIds.has(order._id));
-        await Promise.all(ordersToShip.map(shipOrder));
+        await Promise.all(selectedOrders().map(shipOrder));
+        setSelectedIds(new Set());
+      } else if (confirmAction.type === 'process') {
+        await markProcessed(confirmAction.order);
+      } else if (confirmAction.type === 'bulk-process') {
+        await Promise.all(selectedOrders().map(markProcessed));
         setSelectedIds(new Set());
       }
       reload();
     } catch (err) {
-      setShipError(err.message);
+      setActionError(err.message);
     } finally {
       setConfirmLoading(false);
       setConfirmAction(null);
     }
+  };
+
+  // Cancel is OTP-gated (see CancelOtpDialog) — the mutation only runs after
+  // a whitelisted phone number verifies the OTP, so errors surface inside
+  // that dialog rather than the page-level actionError banner.
+  const handleCancelVerified = async () => {
+    if (!confirmAction) return;
+    await cancelOrder(confirmAction.order);
+    reload();
+    setConfirmAction(null);
   };
 
   const toggleSelect = (orderId) => {
@@ -89,6 +151,11 @@ const ReadyForProcessPage = () => {
   const handleBulkShip = () => {
     if (selectedIds.size === 0) return;
     setConfirmAction({ type: 'bulk-ship' });
+  };
+
+  const handleBulkMarkProcessed = () => {
+    if (selectedIds.size === 0) return;
+    setConfirmAction({ type: 'bulk-process' });
   };
 
   return (
@@ -132,6 +199,14 @@ const ReadyForProcessPage = () => {
             </button>
             <button
               type="button"
+              onClick={handleBulkMarkProcessed}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white shadow-sm transition hover:bg-emerald-700"
+            >
+              <FiCheckCircle className="h-3.5 w-3.5" />
+              {`Mark Processed (${selectedIds.size})`}
+            </button>
+            <button
+              type="button"
               onClick={handleBulkShip}
               className="inline-flex items-center gap-1.5 rounded-lg bg-sky-600 px-3 py-1.5 text-sm font-medium text-white shadow-sm transition hover:bg-sky-700"
             >
@@ -147,9 +222,9 @@ const ReadyForProcessPage = () => {
           {error}
         </Banner>
       )}
-      {shipError && (
-        <Banner variant="error" onDismiss={() => setShipError(null)}>
-          {shipError}
+      {actionError && (
+        <Banner variant="error" onDismiss={() => setActionError(null)}>
+          {actionError}
         </Banner>
       )}
 
@@ -175,8 +250,9 @@ const ReadyForProcessPage = () => {
       {!loading && filtered.length > 0 && (
         <OrdersTable
           orders={pageItems}
-          onEdit={setEditingOrder}
+          onCancelOrder={(order) => setConfirmAction({ type: 'cancel', order })}
           onShip={(order) => setConfirmAction({ type: 'ship', order })}
+          onMarkProcessed={(order) => setConfirmAction({ type: 'process', order })}
           pagination={pagination}
           onPageChange={setPage}
           stockInfoByStyle={stockInfoByStyle}
@@ -189,31 +265,22 @@ const ReadyForProcessPage = () => {
         />
       )}
 
-      {editingOrder && (
-        <OrderFormDialog
-          order={editingOrder}
-          onSubmit={handleUpdate}
-          onClose={() => setEditingOrder(null)}
-        />
-      )}
-
-      {confirmAction && (
-        <ConfirmDialog
-          title={
-            confirmAction.type === 'ship' ? 'Mark order as shipped?' : 'Mark selected orders as shipped?'
-          }
-          description={
-            confirmAction.type === 'ship'
-              ? `Order #${confirmAction.order.order_id} (style ${confirmAction.order.style_number}) will be marked as shipped.`
-              : `${selectedIds.size} order(s) will be marked as shipped.`
-          }
-          confirmLabel={confirmAction.type === 'ship' ? 'Mark Shipped' : `Mark ${selectedIds.size} Shipped`}
-          tone="sky"
-          loading={confirmLoading}
-          onConfirm={handleConfirmAction}
-          onCancel={() => setConfirmAction(null)}
-        />
-      )}
+      {confirmAction &&
+        (confirmAction.type === 'cancel' ? (
+          <CancelOtpDialog
+            title="Cancel this order?"
+            description={`Order #${confirmAction.order.order_id} (style ${confirmAction.order.style_number}) will be flagged "Cancel Request" and moved to Cancel Requests for review. Verify your mobile number to continue.`}
+            onVerified={handleCancelVerified}
+            onClose={() => setConfirmAction(null)}
+          />
+        ) : (
+          <ConfirmDialog
+            {...getConfirmDialogProps(confirmAction, selectedIds.size)}
+            loading={confirmLoading}
+            onConfirm={handleConfirmAction}
+            onCancel={() => setConfirmAction(null)}
+          />
+        ))}
     </div>
   );
 };

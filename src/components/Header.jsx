@@ -7,6 +7,7 @@ import {
   FiLogOut,
   FiUser,
   FiXCircle,
+  FiCheckCircle,
   FiMenu,
   FiX,
   FiTruck,
@@ -68,6 +69,7 @@ const NAV_GROUPS = [
         icon: FiRepeat,
         countKey: 'readyForProcess',
       },
+      { to: '/processed', label: 'Processed', icon: FiCheckCircle, countKey: 'processed' },
     ],
   },
   {
@@ -98,6 +100,7 @@ const NAV_GROUPS = [
         icon: FiXCircle,
         countKey: 'cancelRequested',
       },
+      { to: '/cancelled', label: 'Cancelled', icon: FiXCircle, countKey: 'cancelled' },
       { to: '/shipped', label: 'Shipped', icon: FiTruck, countKey: 'shipped' },
       { to: '/all-orders', label: 'All Orders', icon: FiList, countKey: 'orders' },
     ],
@@ -113,14 +116,24 @@ const MOBILE_LINKS = [
 
 const Sidebar = ({ collapsed, onToggleCollapsed }) => {
   const { employee, logout } = useAuth();
-  const { pending, readyForCutting, readyForProcess, cancelRequested, shipped, orders } =
-    useOrdersOverview();
+  const {
+    pending,
+    readyForCutting,
+    readyForProcess,
+    cancelRequested,
+    cancelled,
+    shipped,
+    processed,
+    orders,
+  } = useOrdersOverview();
   const counts = {
     pending: pending.length,
     readyForCutting: readyForCutting.length,
     readyForProcess: readyForProcess.length,
     cancelRequested: cancelRequested.length,
+    cancelled: cancelled.length,
     shipped: shipped.length,
+    processed: processed.length,
     orders: orders.length,
   };
   const location = useLocation();

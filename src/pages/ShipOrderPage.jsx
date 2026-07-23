@@ -10,7 +10,8 @@ import { formatDate, formatValue } from '../lib/formatters';
 
 const ShipOrderPage = () => {
   const { employee } = useAuth();
-  const { readyForCutting, readyForProcess, loading, error, reload } = useOrdersOverview();
+  const { readyForCutting, readyForProcess, processed, loading, error, reload } =
+    useOrdersOverview();
   const [orderIdInput, setOrderIdInput] = useState('');
   const [foundOrder, setFoundOrder] = useState(null);
   const [lookupError, setLookupError] = useState(null);
@@ -22,8 +23,9 @@ const ShipOrderPage = () => {
   const inputRef = useRef(null);
 
   // Only orders that have actually reached the cutting stage — normally via
-  // stock/manual routing, or flagged Alter/Return Found — are eligible to ship.
-  const shippableOrders = [...readyForCutting, ...readyForProcess];
+  // stock/manual routing, flagged Alter/Return Found, or already marked
+  // processed — are eligible to ship.
+  const shippableOrders = [...readyForCutting, ...readyForProcess, ...processed];
 
   const handleLookup = (rawOrderId) => {
     const orderId = String(rawOrderId).trim();
