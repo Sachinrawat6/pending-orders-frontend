@@ -67,6 +67,14 @@ export const fetchNocoOrderById = async (orderId) => {
   return body.data;
 };
 
+// Who most recently scanned an order (NocoDB scan-tracking table) — shown on
+// the Processed page. Proxied through the backend rather than called
+// directly so the NocoDB token never reaches the browser bundle.
+export const fetchScanTrackingRecords = async (orderId) => {
+  const body = await request(`/pending-orders/nocodb/scan-tracking/${encodeURIComponent(orderId)}`);
+  return body.data;
+};
+
 export const fetchProductStylesByCodes = async (codes) => {
   if (!codes || codes.length === 0) return [];
   const params = new URLSearchParams({ codes: codes.join(',') });

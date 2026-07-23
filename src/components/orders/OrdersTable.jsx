@@ -125,6 +125,11 @@ const HEADINGS = [
   },
   { label: 'Employee', hide: 'hidden lg:table-cell' },
   { label: 'Reason', hide: 'hidden lg:table-cell' },
+  {
+    label: 'Scan Status',
+    hide: 'hidden lg:table-cell',
+    optional: 'showScanStatus',
+  },
   { label: 'Stock', hide: 'hidden md:table-cell' },
   { label: 'Status', hide: '' },
   { label: '', hide: '' },
@@ -179,12 +184,15 @@ const OrdersTable = ({
   sortRules,
   onSortToggle,
   showPendingDays,
+  showScanStatus,
+  scanStatusFor,
 }) => {
   const { imageFor } = useProductImages(orders);
   const allSelected =
     selectable && orders.length > 0 && orders.every((order) => selectedIds?.has(order._id));
   const [previewImage, setPreviewImage] = useState(null);
-  const headings = HEADINGS.filter((heading) => !heading.optional || showPendingDays);
+  const optionalFlags = { showPendingDays, showScanStatus };
+  const headings = HEADINGS.filter((heading) => !heading.optional || optionalFlags[heading.optional]);
 
   return (
     <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
@@ -289,6 +297,11 @@ const OrdersTable = ({
                   <td className="hidden max-w-[200px] px-4 py-3 text-slate-600 lg:table-cell">
                     <ReasonChips reason={displayReason} />
                   </td>
+                  {showScanStatus && (
+                    <td className="hidden whitespace-nowrap px-4 py-3 text-slate-600 lg:table-cell">
+                      {scanStatusFor?.(order.order_id) || '—'}
+                    </td>
+                  )}
                   <td className="hidden max-w-[200px] px-4 py-3 text-slate-600 md:table-cell">
                     {stockInfo?.fabrics?.length ? (
                       <div className="space-y-0.5">

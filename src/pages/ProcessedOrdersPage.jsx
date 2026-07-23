@@ -8,6 +8,7 @@ import OrdersTable from '../components/orders/OrdersTable';
 import { useOrdersOverview } from '../context/OrdersOverviewContext';
 import { useClientPagination } from '../hooks/useClientPagination';
 import { useSortableOrders } from '../hooks/useSortableOrders';
+import { useScanTracking } from '../hooks/useScanTracking';
 import { filterOrdersBySearch } from '../lib/searchOrders';
 
 const ProcessedOrdersPage = () => {
@@ -16,6 +17,9 @@ const ProcessedOrdersPage = () => {
   const filtered = useMemo(() => filterOrdersBySearch(processed, search), [processed, search]);
   const { sorted, sortRules, toggleSort } = useSortableOrders(filtered);
   const { pageItems, pagination, setPage } = useClientPagination(sorted, 25);
+  const { scanStatusFor } = useScanTracking(pageItems);
+
+  console.log(scanStatusFor(18026));
 
   return (
     <div className="space-y-5">
@@ -76,6 +80,8 @@ const ProcessedOrdersPage = () => {
           stockInfoByStyle={stockInfoByStyle}
           sortRules={sortRules}
           onSortToggle={toggleSort}
+          showScanStatus
+          scanStatusFor={scanStatusFor}
         />
       )}
     </div>
